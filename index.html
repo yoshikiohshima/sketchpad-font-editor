@@ -28,10 +28,11 @@
             return String.fromCharCode(n);
         });
 
-        const coordinateMap = (offsetX, offsetY) => {
+        const coordinateMap = (evt) => {
+	    const rect = evt.target.getBoundingClientRect();
             return {
-                x: Math.floor(offsetX),
-                y: 512 - Math.floor(offsetY)
+                x: Math.floor(evt.layerX - rect.x) - 40,
+                y: 512 - Math.floor(evt.layerY - rect.top - 40)
             }
         };
 
@@ -46,7 +47,7 @@
             if (typeof evt === "string") {
                 return {command: evt, points: [], state: null};
             }
-            const p = coordinateMap(evt.offsetX, evt.offsetY);
+            const p = coordinateMap(evt);
             const newPoints = [...points.points, p];
             if (points.command === "line") {
                 if (points.points.length === 0) {
@@ -160,31 +161,31 @@
             height: 56px;
             color: #eee;
             text-align: center;
-            border-radius: 4px;
+            border-radius: 40px;
             border: 4px solid #888;
         }
 
         #editorPaneHolder {
-            height: 512px;
+            height: 592px;
             box-sizing: border-box;
         }
 
         #editorPane {
             box-sizing: border-box;
             background-color: #222;
-            width: 512px;
-            height: 512px;
-            border: 4px ridge rgba(211, 220, 220, .6);
+            width: 592px;
+            height: 592px;
+            border: 40px ridge rgba(211, 220, 220, .6);
         }
 
         #editorPane2 {
             box-sizing: border-box;
             background-color: #222;
-            width: 512px;
-            height: 512px;
-            border: 4px ridge rgba(211, 220, 220, .6);
+            width: 592px;
+            height: 592px;
+            border: 40px ridge rgba(211, 220, 220, .6);
             position: relative;
-            top: -512px;
+            top: -592px;
             pointer-events: none;
         }
 
