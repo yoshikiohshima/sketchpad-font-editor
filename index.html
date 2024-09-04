@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8"> 
+  </head>
+  <body>
+   <div id="renkon">
+      <script type="reactive">
+        const preactModule = import('./preact.standalone.module.js');
+        const html = preactModule.html;
+        const render = preactModule.render;
+
+        const lineButton = Events.click("#line");
+        const arcButton = Events.click("#arc");
+
+        const charClick = Events.click("#chars");
+        
+        const toolState = Behaviors.collect(
+            "line",
+            Events.or(lineButton, arcButton),
+            (old, evt) => evt.target.id
+        );
+
+        const selectedChar = Events.collect(" ", charClick, (old, evt) => {
+            const id = evt.target.id;
+            const match = /([0-9]+)/.exec(id);
+            const n = parseFloat(match[1]);
+            return String.fromCharCode(n);
+        });
+
+        const coordinateMap = (offsetX, offsetY) => {
+            return {
+                x: Math.floor(offsetX),
+                y: 512 - Math.floor(offsetY)
+            }
+        };
+
+        const coordinateUnmap = (p) => {
+            return {
+                x: p.x,
+                y: 512 - Math.floor(p.y)
+            }
+        };
+
+        const interactionBuffer = Events.collect({command: "line", points: [], state: null}, Events.or(editorUp, Events.change(toolState)), (points, evt) => {
+            if (typeof evt === "string") {
+                return {command: evt, points: [], state: null};
+            }
+            const p = coordinateMap(evt.offsetX, evt.offsetY);
+            const newPoints = [...points.points, p];
+            if (points.command === "line") {
+                if (points.points.length === 0) {
+                    return {command: "line", points: newPoints, state: null};
+                }
+                if (points.points.length === 1) {
+                    return {command: "line", points: [], state: newPoints};
+                }
+            } else if (points.command === "arc") {
+                if (points.points.length === 0 || points.points.length === 1) {
+                    return {command: "arc", points: newPoints, state: null};
+                }
+                if (points.points.length === 2) {
+                    return {command: "arc", points: [], state: newPoints};
+                }
+            }
+        });
+
+        const segments = Behaviors.collect([], interactionBuffer, (segs, buffer) => {
+            if (buffer.state) {
+                return [...segs, buffer];
+            }
+            return segs;
+        });
+
+        console.log(segments);
+
+        const lines = segments.map((seg) => {
+            if (seg.command === "line") {
+                const ps = seg.state;
+                const p1 = coordinateUnmap(ps[0]);
+                const p2 = coordinateUnmap(ps[1]);
+                
+                return html`<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="white"></line>`;
+            }
+        });
+
+        const linesSVG = html`<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">${lines}</svg>`;
+
+        render(linesSVG, document.querySelector("#editorPane2"));
+
+        const editorUp = Events.listener("#editorPane", "pointerup", (evt) => evt);
+
+        const charEntry = (i, html) => {
+            const c = String.fromCharCode(i);
+            return html`<div class="charHolder" id="holder-${i}"><div class="charName">${c}</div><div class="charView"></div></div>`;
+        }
+
+        const charList = ((html, charEntry) => [...Array(96).keys()].map((i) => charEntry(i + 32, html)))(html, charEntry);
+
+        const charsHTML = html`<div class="charViews">${charList}</div>`;
+
+        render(charsHTML, document.querySelector("#chars"));
+
+        console.log(selectedChar);
+        
+      </script>
+      <div id="all">
+        <div id="charEditor">
+          <div id="tools">
+            <div id="line" class="toolButton">Line</div>
+            <div id="arc" class="toolButton">Arc</div>
+          </div>
+          <div id="editorPaneHolder">
+            <div id="editorPane"></div>
+            <div id="editorPane2"></div>
+          </div>
+        </div>
+        <div id="chars"></div>
+      </div>
+      <style>
+        #all {
+            display: grid;
+            height: 100%;
+        }
+
+        #charEditor {
+            background-color: white;
+            display: flex;
+        }
+
+        #tools {
+            background-color: #888;
+            width: 64px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .charHolder {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .charName {
+            color: black;
+            height: 16px;
+            pointer-events: none;
+        }
+
+        .charView {
+            width: 60px;
+            height: 60px;
+            border: 1px ridge rgba(211, 220, 220, .6);
+            background-color: #510;
+            pointer-events: none;
+        }
+        
+        .toolButton {
+            font-size: 20px;
+            width: 56px;
+            height: 56px;
+            color: #eee;
+            text-align: center;
+            border-radius: 4px;
+            border: 4px solid #888;
+        }
+
+        #editorPaneHolder {
+            height: 512px;
+            box-sizing: border-box;
+        }
+
+        #editorPane {
+            box-sizing: border-box;
+            background-color: #222;
+            width: 512px;
+            height: 512px;
+            border: 4px ridge rgba(211, 220, 220, .6);
+        }
+
+        #editorPane2 {
+            box-sizing: border-box;
+            background-color: #222;
+            width: 512px;
+            height: 512px;
+            border: 4px ridge rgba(211, 220, 220, .6);
+            position: relative;
+            top: -512px;
+            pointer-events: none;
+        }
+
+        #chars {
+            margin-top: 20px;
+            background-color: #ccc;
+        }
+
+        .charViews {
+            display: flex;
+            flex-wrap: wrap;
+        }
+      </style>
+   </div>
+   <script type="module">
+     import {view} from "./dist/renkon.js";
+     view();
+    </script>
+  </body>
+</html>
