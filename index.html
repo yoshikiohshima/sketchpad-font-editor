@@ -21,6 +21,8 @@
               (old, evt) => evt.target.id
           );
 
+	  console.log(toolState);
+
           const selectedChar = Events.collect(" ", charClick, (old, evt) => {
               const id = evt.target.id;
               const match = /([0-9]+)/.exec(id);
@@ -77,6 +79,11 @@
 	      return html`<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="#ddd" stroke-width="4"></line>`;
 	  };
 
+	  const makeArc = (c, p1, p2, html) => {
+	      const r = Math.sqrt((p1.x - c.x) ** 2 + (p1.y - c.y) ** 2);
+	      return html`<path d="M ${p1.x} ${p1.y} A ${r} ${r} 0 0 0 ${p2.x} ${p2.y}" stroke="#ddd" stroke-width="4" fill="transparent"></path>`;
+	  };
+
           const lines = segments.map((seg) => {
               if (seg.command === "line") {
                   const ps = seg.state;
@@ -84,6 +91,13 @@
                   const p2 = coordinateUnmap(ps[1]);
                   return makeLine(p1, p2, html);
               }
+	      if (seg.command === "arc") {
+		  const ps = seg.state;
+		  const c = coordinateUnmap(ps[0]);
+		  const p1 = coordinateUnmap(ps[1]);
+		  const p2 = coordinateUnmap(ps[2]);
+		  return makeArc(c, p1, p2, html);
+	      }
           });
 
           const linesSVG = html`<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">${[...lines, rubberBandLine]}</svg>`;
