@@ -12,16 +12,26 @@
 
           const lineButton = Events.click("#line");
           const arcButton = Events.click("#arc");
+          const deleteButton = Events.click("#delete");
 
           const charClick = Events.click("#chars");
         
           const toolState = Behaviors.collect(
-	      "line",
-              Events.or(lineButton, arcButton),
-              (old, evt) => evt.target.id
+              "line",
+              Events.or(lineButton, arcButton, deleteButton),
+              (_old, evt) => evt.target.id
           );
 
-	  console.log(toolState);
+          // toolHighlighter
+          ((toolState) => {
+              for (const child of [...document.querySelector("#tools").childNodes]) {
+                  if (child.setAttribute) {
+                      child.setAttribute("toolSelected", child.id === toolState ? "true" : "false");
+                  }
+              }
+          })(toolState);
+
+          console.log(toolState);
 
           const selectedChar = Events.collect(" ", charClick, (old, evt) => {
               const id = evt.target.id;
@@ -31,7 +41,7 @@
           });
 
           const coordinateMap = (evt) => {
-	      const rect = evt.target.getBoundingClientRect();
+              const rect = evt.target.getBoundingClientRect();
               return {
                   x: Math.floor(evt.layerX - rect.x) - 40,
                   y: 512 - Math.floor(evt.layerY - rect.top - 40)
@@ -49,6 +59,7 @@
               if (typeof evt === "string") {
                   return {command: evt, points: [], state: null};
               }
+              console.log(points);
               const p = coordinateMap(evt);
               const newPoints = [...points.points, p];
               if (points.command === "line") {
@@ -65,24 +76,59 @@
                   if (points.points.length === 2) {
                       return {command: "arc", points: [], state: newPoints};
                   }
+              } else if (points.command === "delete") {
+                  return {command: "delete", points: [], state: newPoints};
               }
           });
 
           const segments = Behaviors.collect([], interactionBuffer, (segs, buffer) => {
-              if (buffer.state) {
-                  return [...segs, buffer];
+              const hit = (seg, p) => {
+                  if (seg.command === "line") {
+                      const ps = seg.state;
+                      const p1 = ps[0];
+                      const p2 = ps[1];
+                      const dist = Math.abs(
+                          (p2.y - p1.y) * p.x -
+                          (p2.x - p1.x) * p.y +
+                          p2.x * p1.y -
+                          p2.y * p1.x)
+                            /
+                          Math.sqrt((p2.y - p1.y) ** 2 + (p2.x - p1.x) ** 2);
+                      const xIn = p1.x >= p2.x ?
+                            p.x >= p2.x - 4 && p1.x + 4 > p.x :
+                            p.x >= p1.x - 4 && p2.x + 4 > p.x;
+                      const yIn = p1.y >= p2.y ?
+                            p.y >= p2.y - 4 && p1.y + 4 > p.y :
+                            p.y >= p1.y - 4 && p2.y + 4 > p.y;
+                      return xIn && yIn && dist < 4;
+                  }
+                  return false;
+              };
+              if (!buffer.state) {return segs;}
+              if (buffer.command === "delete") {
+                  const p = buffer.state[0];
+                  const found = false;
+                  for (let index = segs.length - 1; index >= 0; index--) {
+                      const seg = segs[index];
+                      if (hit(seg, p)) {
+                          const result = [...segs];
+                          result.splice(index, 1);
+                          return result;
+                      }
+                  }
+                  return segs;
               }
-              return segs;
+              return [...segs, buffer];
           });
 
-	  const makeLine = (p1, p2, html) => {
-	      return html`<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="#ddd" stroke-width="4"></line>`;
-	  };
+          const makeLine = (p1, p2, html) => {
+              return html`<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="#ddd" stroke-width="4"></line>`;
+          };
 
-	  const makeArc = (c, p1, p2, html) => {
-	      const r = Math.sqrt((p1.x - c.x) ** 2 + (p1.y - c.y) ** 2);
-	      return html`<path d="M ${p1.x} ${p1.y} A ${r} ${r} 0 0 0 ${p2.x} ${p2.y}" stroke="#ddd" stroke-width="4" fill="transparent"></path>`;
-	  };
+          const makeArc = (c, p1, p2, html) => {
+              const r = Math.sqrt((p1.x - c.x) ** 2 + (p1.y - c.y) ** 2);
+              return html`<path d="M ${p1.x} ${p1.y} A ${r} ${r} 0 0 0 ${p2.x} ${p2.y}" stroke="#ddd" stroke-width="4" fill="transparent"></path>`;
+          };
 
           const lines = segments.map((seg) => {
               if (seg.command === "line") {
@@ -91,13 +137,13 @@
                   const p2 = coordinateUnmap(ps[1]);
                   return makeLine(p1, p2, html);
               }
-	      if (seg.command === "arc") {
-		  const ps = seg.state;
-		  const c = coordinateUnmap(ps[0]);
-		  const p1 = coordinateUnmap(ps[1]);
-		  const p2 = coordinateUnmap(ps[2]);
-		  return makeArc(c, p1, p2, html);
-	      }
+              if (seg.command === "arc") {
+                  const ps = seg.state;
+                  const c = coordinateUnmap(ps[0]);
+                  const p1 = coordinateUnmap(ps[1]);
+                  const p2 = coordinateUnmap(ps[2]);
+                  return makeArc(c, p1, p2, html);
+              }
           });
 
           const linesSVG = html`<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">${[...lines, rubberBandLine]}</svg>`;
@@ -107,24 +153,24 @@
           const editorUp = Events.listener("#editorPane", "pointerup", (evt) => evt);
           const editorMove = Events.listener("#editorPane", "pointermove", (evt) => evt);
 
-	  const rubberBandUpdate = ((interactionBuffer, editorMove, html) => {
+          const rubberBandUpdate = ((interactionBuffer, editorMove, html) => {
               const points = interactionBuffer.points;
-	      if (interactionBuffer.command === "line") {
-	          if (points.length === 1) {
+              if (interactionBuffer.command === "line") {
+                  if (points.length === 1) {
                       const p1 = coordinateUnmap(points[0]);
                       const p2 = coordinateUnmap(coordinateMap(editorMove));
-		      
-		      return makeLine(p1, p2, html);
-		  }
-	      }
-	      return makeLine({x: 0, y: 0}, {x: 0, y: 0}, html);
-	  })(Behaviors.keep(interactionBuffer), editorMove, html);
+                      
+                      return makeLine(p1, p2, html);
+                  }
+              }
+              return makeLine({x: 0, y: 0}, {x: 0, y: 0}, html);
+          })(Behaviors.keep(interactionBuffer), editorMove, html);
 
 
-	  const rubberBandLine = Behaviors.collect(
-	      makeLine({x: 0, y: 0}, {x: 0, y: 0}, html),
-	      rubberBandUpdate,
-	      (_old, r) => r);
+          const rubberBandLine = Behaviors.collect(
+              makeLine({x: 0, y: 0}, {x: 0, y: 0}, html),
+              rubberBandUpdate,
+              (_old, r) => r);
 
           const charEntry = (i, html) => {
               const c = String.fromCharCode(i);
@@ -144,6 +190,7 @@
           <div id="tools">
             <div id="line" class="toolButton">Line</div>
             <div id="arc" class="toolButton">Arc</div>
+            <div id="delete" class="toolButton">Delete</div>
           </div>
           <div id="editorPaneHolder">
             <div id="editorPane"></div>
@@ -190,13 +237,18 @@
         }
         
         .toolButton {
-            font-size: 20px;
+            font-size: 18px;
             width: 56px;
             height: 56px;
             color: #eee;
             text-align: center;
-            border-radius: 40px;
             border: 4px solid #888;
+        }
+
+        .toolButton[toolSelected="true"] {
+            background-color: #ccc;
+            border: 2px ridge rgba(120, 120, 120, .6);
+            border-radius: 4px;
         }
 
         #editorPaneHolder {
