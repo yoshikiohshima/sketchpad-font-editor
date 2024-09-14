@@ -144,8 +144,8 @@
           };
 
           const makeArc = (p1, p2, p3, html) => {
-              const r = Math.sqrt((p1.x - p3.x) ** 2 + (p1.y - p3.y) ** 2);
-              return html`<path d="M ${p1.x} ${p1.y} A ${r} ${r} 0 0 0 ${p2.x} ${p2.y}" stroke="#ddd" stroke-width="4" fill="transparent"></path>`;
+            const r = Math.sqrt((p1.x - p3.x) ** 2 + (p1.y - p3.y) ** 2);
+            return html`<path d="M ${p1.x} ${p1.y} A ${r} ${r} 0 0 0 ${p2.x} ${p2.y}" stroke="#ddd" stroke-width="4" fill="transparent"></path>`;
           };
 
           const lines = segments.map((seg) => {
@@ -192,11 +192,16 @@
                       const p2 = griddedUnmap(griddedMap(editorMove));
                       return makeLine(p1, p2, html);
                   } else if (points.length === 2) {
-                      const p1 = griddedUnmap(points[0]);
-                      const p2 = griddedUnmap(points[1]);
-                      const p3 = griddedUnmap(griddedMap(editorMove));
-		      return makeArc(p1, p2, p3, html);
-		  }
+                      const p1 = points[0];
+                      const p2 = points[1];
+                      const control = griddedMap(editorMove);
+                      const c = center(p1, p2, control);
+                      console.log("center:", c, p1, p2, control);
+                      if (c === null) {
+                        return makeLine(p1, p2, html);
+                      }
+		            return makeArc(griddedUnmap(p1), griddedUnmap(p2), griddedUnmap(c), html);
+		        }
 	      }
 
               return makeLine({x: 0, y: 0}, {x: 0, y: 0}, html);
@@ -247,6 +252,63 @@
               return myCanvas;
           }
 
+function center(p1, p2, p3) {
+    let midAC = {x: (p3.x + p1.x) / 2, y: (p3.y + p1.y) / 2};
+    let midBC = {x: (p3.x + p2.x) / 2, y: (p3.y + p2.y) / 2};
+    let midAB = {x: (p2.x + p1.x) / 2, y: (p2.y + p1.y) / 2};
+
+    let slopeAC = -(p3.x - p1.x) / (p3.y - p1.y); // inverse of the slope
+    let slopeBC = -(p3.x - p2.x) / (p3.y - p2.y); // inverse of the slope
+
+    if (Math.abs(slopeAC - slopeBC) < 0.001) {
+        return null;
+    }
+
+
+    if (Math.abs(p3.y - p1.y) < 0.001) {
+        // just find the case when the other line,
+        // slopeBC * (x - midBC.x) + midBC.y = p3.y;
+        // slopeBC * x - slopeBC * midBC.x = p3.y - midBC.y;
+        // x = (-slopeBC * midBC.x + p3.y - midBC.y) / slopeBC;
+        console.log("slopeBC", slopeBC);
+        // if slopeBC is zero, that means that it is a right triangle. The center is the midpoint of AB;
+        if (Math.abs(slopeBC) < 0.0001) {return midAB;}
+        const x = (-slopeBC * midBC.x + p3.y - midBC.y) / slopeBC;
+        return {x, y: p3.y};
+    }
+
+    if (Math.abs(p3.y - p2.y) < 0.001) {
+        // just find the case when the other line,
+        // slopeAC * (x - midAC.x) + midAC.y = p3.y;
+        // slopeAC * x - slopeAC * midAC.x = p3.y - midAC.y;
+        // x = (-slopeAC * midAC.x + p3.y - midAC.y) / slopeAC;
+        console.log("slopeAC", slopeAC);
+        // if slopeAC is zero, that means that it is a right triangle. The center is the midpoint of AB;
+        if (Math.abs(slopeAC) < 0.0001) {return midAB;}
+        const x = (-slopeAC * midAC.x + p3.y - midAC.y) / slopeAC;
+        return {x, y: p3.y};
+    }
+
+
+    // y = slopeAC * (x - midAC.x) + midAC.y
+    // y = slopeBC * (x - midBC.x) + midBC.y
+
+    // slopeAC * (x - midAC.x) + midAC.y = slopeBC * (x - midBC.x) + midBC.y
+
+    // slopeAC * x - slopeAC * midAC.x + midAC.y = slopeBC * x - slopeBC * midBC.x + midBC.y
+    // slopeAC * x - slopeBC * x = slopeAC * midAC.x - midAC.y - slopeBC * midBC.x + midBC.y
+
+    // (slopeAC - slopeBC) * x = slopeAC * midAC.x - midAC.y - slopeBC * midBC.x + midBC.y
+
+    const x = (slopeAC * midAC.x - midAC.y - slopeBC * midBC.x + midBC.y) / (slopeAC - slopeBC);
+    const y = (x - midAC.x) + midAC.y;
+
+    if (Number.isNaN(x) || Number.isNaN(y)) {debugger;}
+
+    return {x, y};
+}
+    
+                             
           const gridCanvas = makeGridCanvas({...gridSpec, canvas: document.querySelector("#gridCanvas")});
 
           console.log(selectedChar);
