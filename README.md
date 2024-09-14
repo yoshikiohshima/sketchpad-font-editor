@@ -8,4 +8,16 @@
          {t: "line", s: "200x210", e: "210x200"}]}},
 }
 	 
-	 
+
+
+no point => gridded move
+
+line and 1 point => rubberband line (gridded)
+
+down
+
+pointerdown => pointer
+
+
+pointerup <= pointerdown
+

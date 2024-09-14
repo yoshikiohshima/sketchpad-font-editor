@@ -13,9 +13,8 @@
           const lineButton = Events.click("#line");
           const arcButton = Events.click("#arc");
           const deleteButton = Events.click("#delete");
-
           const charClick = Events.click("#chars");
-        
+
           const toolState = Behaviors.collect(
               "line",
               Events.or(lineButton, arcButton, deleteButton),
@@ -40,27 +39,45 @@
               return String.fromCharCode(n);
           });
 
+          const gridSpec = {width: 384, height: 512, x: 10, y: 16};
+
           const coordinateMap = (evt) => {
               const rect = evt.target.getBoundingClientRect();
               return {
-                  x: Math.floor(evt.layerX - rect.x) - 40,
-                  y: 512 - Math.floor(evt.layerY - rect.top - 40)
+                  x: Math.floor(evt.x - rect.x) - 40,
+                  y: gridSpec.height - Math.floor(evt.y - rect.top - 40)
               }
           };
-
-          const coordinateUnmap = (p) => {
-              return {
-                  x: p.x,
-                  y: 512 - Math.floor(p.y)
-              }
+          const griddedMap = (evt) => {
+              const rect = evt.target.getBoundingClientRect();
+	      const gridX = gridSpec.width / gridSpec.x;
+	      const gridY = gridSpec.height / gridSpec.y;
+              const x = Math.max(0, Math.round((evt.clientX - rect.x - (gridX/2)) / gridX));
+              const y = gridSpec.y - 1 - Math.round((evt.clientY - rect.y - (gridY / 2)) / gridY);
+              return {x, y, target: evt.target};
           };
 
-          const interactionBuffer = Events.collect({command: "line", points: [], state: null}, Events.or(editorUp, Events.change(toolState)), (points, evt) => {
+          const griddedUnmap = (p, useRect) => {
+	      const gridX = gridSpec.width / gridSpec.x;
+	      const gridY = gridSpec.height / gridSpec.y;
+	      let offset;
+	      if (useRect) {
+		  const rect = p.target.getBoundingClientRect();
+		  offset = {x: rect.x, y: rect.y};
+	      } else {
+		  offset = {x: 0, y: 0};
+	      }
+	      return {
+		  x: p.x * gridX + (gridX/2) + offset.x,
+		  y: (gridSpec.y - p.y - 1) * gridY + (gridY/2) + offset.y
+	      }
+          };
+
+          const interactionBuffer = Events.collect({command: "line", points: [], state: null}, Events.or(editorDown, Events.change(toolState)), (points, evt) => {
               if (typeof evt === "string") {
                   return {command: evt, points: [], state: null};
               }
-              console.log(points);
-              const p = coordinateMap(evt);
+              const p = griddedMap(evt);
               const newPoints = [...points.points, p];
               if (points.command === "line") {
                   if (points.points.length === 0) {
@@ -81,29 +98,30 @@
               }
           });
 
+          const hit = (seg, p) => {
+              if (seg.command === "line") {
+                  const ps = seg.state;
+                  const p1 = ps[0];
+                  const p2 = ps[1];
+                  const dist = Math.abs(
+                      (p2.y - p1.y) * p.x -
+                      (p2.x - p1.x) * p.y +
+                      p2.x * p1.y -
+                      p2.y * p1.x)
+                      /
+                      Math.sqrt((p2.y - p1.y) ** 2 + (p2.x - p1.x) ** 2);
+                  const xIn = p1.x >= p2.x ?
+                        p.x >= p2.x - 4 && p1.x + 4 > p.x :
+                        p.x >= p1.x - 4 && p2.x + 4 > p.x;
+                  const yIn = p1.y >= p2.y ?
+                        p.y >= p2.y - 4 && p1.y + 4 > p.y :
+                        p.y >= p1.y - 4 && p2.y + 4 > p.y;
+                  return xIn && yIn && dist < 4;
+              }
+              return false;
+          };
+
           const segments = Behaviors.collect([], interactionBuffer, (segs, buffer) => {
-              const hit = (seg, p) => {
-                  if (seg.command === "line") {
-                      const ps = seg.state;
-                      const p1 = ps[0];
-                      const p2 = ps[1];
-                      const dist = Math.abs(
-                          (p2.y - p1.y) * p.x -
-                          (p2.x - p1.x) * p.y +
-                          p2.x * p1.y -
-                          p2.y * p1.x)
-                            /
-                          Math.sqrt((p2.y - p1.y) ** 2 + (p2.x - p1.x) ** 2);
-                      const xIn = p1.x >= p2.x ?
-                            p.x >= p2.x - 4 && p1.x + 4 > p.x :
-                            p.x >= p1.x - 4 && p2.x + 4 > p.x;
-                      const yIn = p1.y >= p2.y ?
-                            p.y >= p2.y - 4 && p1.y + 4 > p.y :
-                            p.y >= p1.y - 4 && p2.y + 4 > p.y;
-                      return xIn && yIn && dist < 4;
-                  }
-                  return false;
-              };
               if (!buffer.state) {return segs;}
               if (buffer.command === "delete") {
                   const p = buffer.state[0];
@@ -133,39 +151,47 @@
           const lines = segments.map((seg) => {
               if (seg.command === "line") {
                   const ps = seg.state;
-                  const p1 = coordinateUnmap(ps[0]);
-                  const p2 = coordinateUnmap(ps[1]);
+                  const p1 = griddedUnmap(ps[0]);
+                  const p2 = griddedUnmap(ps[1]);
                   return makeLine(p1, p2, html);
               }
               if (seg.command === "arc") {
                   const ps = seg.state;
-                  const c = coordinateUnmap(ps[0]);
-                  const p1 = coordinateUnmap(ps[1]);
-                  const p2 = coordinateUnmap(ps[2]);
+                  const c = griddedUnmap(ps[0]);
+                  const p1 = griddedUnmap(ps[1]);
+                  const p2 = griddedUnmap(ps[2]);
                   return makeArc(c, p1, p2, html);
               }
           });
 
-          const linesSVG = html`<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">${[...lines, rubberBandLine]}</svg>`;
+          const linesSVG = html`<svg viewBox="0 0 ${gridSpec.width} ${gridSpec.height}" xmlns="http://www.w3.org/2000/svg">${[...lines, rubberBandLine]}</svg>`;
 
           render(linesSVG, document.querySelector("#editorPane2"));
 
-          const editorUp = Events.listener("#editorPane", "pointerup", (evt) => evt);
+          const editorDown = Events.listener("#editorPane", "pointerdown", (evt) => evt);
           const editorMove = Events.listener("#editorPane", "pointermove", (evt) => evt);
+
+          const gridMover = ((editorMove) => {
+              const p = griddedMap(editorMove);
+              const gridCursor = document.querySelector("#gridCursor");
+              gridCursor.style.left = `${p.x - 5}px`;
+              gridCursor.style.top = `${p.y + 5}px`;
+          })(editorMove);
 
           const rubberBandUpdate = ((interactionBuffer, editorMove, html) => {
               const points = interactionBuffer.points;
               if (interactionBuffer.command === "line") {
                   if (points.length === 1) {
-                      const p1 = coordinateUnmap(points[0]);
-                      const p2 = coordinateUnmap(coordinateMap(editorMove));
+                      const p1 = griddedUnmap(points[0]);
+                      const p2 = griddedUnmap(griddedMap(editorMove));
+		      console.log(points[0], griddedMap(editorMove), p1, p2);
                       
                       return makeLine(p1, p2, html);
                   }
               }
+
               return makeLine({x: 0, y: 0}, {x: 0, y: 0}, html);
           })(Behaviors.keep(interactionBuffer), editorMove, html);
-
 
           const rubberBandLine = Behaviors.collect(
               makeLine({x: 0, y: 0}, {x: 0, y: 0}, html),
@@ -183,6 +209,37 @@
 
           render(charsHTML, document.querySelector("#chars"));
 
+          function makeGridCanvas(options) {
+              const {width, height, x, y, radius, canvas} = options;
+              const cellW = width / x;
+              const cellH = height / y;
+
+              const r = radius || 2;
+
+              // each cell is in the size of (cellW, cellH)
+              // the center of the dot is ((cellW/2) + i * cellW, (cellH/2) + j * cellH)
+              // where i is [0..x] and j is [0..y]
+
+              const myCanvas = canvas || document.createElement("canvas");
+              myCanvas.width = width;
+              myCanvas.height = height;
+              const ctx = myCanvas.getContext("2d");
+    
+              ctx.clearRect(0, 0, width, height);
+              ctx.fillStyle = "#bbb";
+
+              for (let j = 0; j < y; j++) {
+                  for (let i = 0; i < x; i++) {
+                      ctx.beginPath();
+                      ctx.ellipse((cellW/2) + i * cellW, (cellH/2) + j * cellH, r, r, 0, 0, Math.PI * 2);
+                      ctx.fill();
+                  }
+              }
+              return myCanvas;
+          }
+
+          const gridCanvas = makeGridCanvas({...gridSpec, canvas: document.querySelector("#gridCanvas")});
+
           console.log(selectedChar);
       </script>
       <div id="all">
@@ -193,8 +250,16 @@
             <div id="delete" class="toolButton">Delete</div>
           </div>
           <div id="editorPaneHolder">
-            <div id="editorPane"></div>
-            <div id="editorPane2"></div>
+	      <div class="zeroHeight">
+		  <canvas id="gridCanvas"></canvas>
+	      </div>
+	      <div class="zeroHeight">
+		  <div id="editorPane"></div>
+	      </div>
+	      <div class="zeroHeight">
+		  <div id="editorPane2"></div>
+	      </div>
+            <div id="gridCursor"></div>
           </div>
         </div>
         <div id="chars"></div>
@@ -213,6 +278,7 @@
         #tools {
             background-color: #888;
             width: 64px;
+            height: 592px;
             display: flex;
             flex-direction: column;
         }
@@ -254,24 +320,36 @@
         #editorPaneHolder {
             height: 592px;
             box-sizing: border-box;
+	    display: flex;
+	    flex-direction: column;
         }
 
+	.zeroHeight {
+	    height: 0px;
+	}
+
         #editorPane {
-            box-sizing: border-box;
-            background-color: #222;
-            width: 592px;
-            height: 592px;
-            border: 40px ridge rgba(211, 220, 220, .6);
+            background-color: transparent;
+            width: calc(384px);
+            height: calc(512px);
+	    margin: 40px;
         }
 
         #editorPane2 {
             box-sizing: border-box;
-            background-color: #222;
-            width: 592px;
-            height: 592px;
+            background-color: transparent;
+            width: calc(384px + 40px + 40px);
+            height: calc(512px + 40px + 40px);
             border: 40px ridge rgba(211, 220, 220, .6);
-            position: relative;
-            top: -592px;
+            pointer-events: none;
+        }
+
+        #gridCanvas {
+            box-sizing: border-box;
+            background-color: #222;
+            width: calc(384px + 40px + 40px);
+            height: calc(512px + 40px + 40px);
+            border: 40px ridge rgba(211, 220, 220, .6);
             pointer-events: none;
         }
 
@@ -283,6 +361,16 @@
         .charViews {
             display: flex;
             flex-wrap: wrap;
+        }
+
+        #gridCursor {
+            width: 10px;
+            height: 10px;
+            background-color: #bbb;
+            position: absolute;
+            pointer-events: none;
+            transition: top 0.2s;
+            transition: left 0.2s;
         }
       </style>
    </div>
