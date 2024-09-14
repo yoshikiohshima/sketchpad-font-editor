@@ -143,8 +143,8 @@
               return html`<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="#ddd" stroke-width="4"></line>`;
           };
 
-          const makeArc = (c, p1, p2, html) => {
-              const r = Math.sqrt((p1.x - c.x) ** 2 + (p1.y - c.y) ** 2);
+          const makeArc = (p1, p2, p3, html) => {
+              const r = Math.sqrt((p1.x - p3.x) ** 2 + (p1.y - p3.y) ** 2);
               return html`<path d="M ${p1.x} ${p1.y} A ${r} ${r} 0 0 0 ${p2.x} ${p2.y}" stroke="#ddd" stroke-width="4" fill="transparent"></path>`;
           };
 
@@ -172,10 +172,10 @@
           const editorMove = Events.listener("#editorPane", "pointermove", (evt) => evt);
 
           const gridMover = ((editorMove) => {
-              const p = griddedMap(editorMove);
+              const p = griddedUnmap(griddedMap(editorMove), true);
               const gridCursor = document.querySelector("#gridCursor");
               gridCursor.style.left = `${p.x - 5}px`;
-              gridCursor.style.top = `${p.y + 5}px`;
+              gridCursor.style.top = `${p.y - 5}px`;
           })(editorMove);
 
           const rubberBandUpdate = ((interactionBuffer, editorMove, html) => {
@@ -184,11 +184,20 @@
                   if (points.length === 1) {
                       const p1 = griddedUnmap(points[0]);
                       const p2 = griddedUnmap(griddedMap(editorMove));
-		      console.log(points[0], griddedMap(editorMove), p1, p2);
-                      
                       return makeLine(p1, p2, html);
                   }
-              }
+              } else if (interactionBuffer.command === "arc") {
+                  if (points.length === 1) {
+                      const p1 = griddedUnmap(points[0]);
+                      const p2 = griddedUnmap(griddedMap(editorMove));
+                      return makeLine(p1, p2, html);
+                  } else if (points.length === 2) {
+                      const p1 = griddedUnmap(points[0]);
+                      const p2 = griddedUnmap(points[1]);
+                      const p3 = griddedUnmap(griddedMap(editorMove));
+		      return makeArc(p1, p2, p3, html);
+		  }
+	      }
 
               return makeLine({x: 0, y: 0}, {x: 0, y: 0}, html);
           })(Behaviors.keep(interactionBuffer), editorMove, html);
