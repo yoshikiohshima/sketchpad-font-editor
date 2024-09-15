@@ -39,7 +39,7 @@
               return String.fromCharCode(n);
           });
 
-          const gridSpec = {width: 384, height: 512, x: 10, y: 16};
+          const gridSpec = {width: 320, height: 512, x: 10, y: 16};
 
           const coordinateMap = (evt) => {
               const rect = evt.target.getBoundingClientRect();
@@ -143,9 +143,9 @@
               return html`<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="#ddd" stroke-width="4"></line>`;
           };
 
-          const makeArc = (p1, p2, p3, html) => {
+          const makeArc = (p1, p2, p3, long, sweep, html) => {
             const r = Math.sqrt((p1.x - p3.x) ** 2 + (p1.y - p3.y) ** 2);
-            return html`<path d="M ${p1.x} ${p1.y} A ${r} ${r} 0 0 0 ${p2.x} ${p2.y}" stroke="#ddd" stroke-width="4" fill="transparent"></path>`;
+            return html`<path d="M ${p1.x} ${p1.y} A ${r} ${r} 0 ${long ? "1" : "0"} ${sweep ? "1" : "0"} ${p2.x} ${p2.y}" stroke="#ddd" stroke-width="4" fill="transparent"></path>`;
           };
 
           const lines = segments.map((seg) => {
@@ -157,10 +157,18 @@
               }
               if (seg.command === "arc") {
                   const ps = seg.state;
-                  const c = griddedUnmap(ps[0]);
-                  const p1 = griddedUnmap(ps[1]);
-                  const p2 = griddedUnmap(ps[2]);
-                  return makeArc(c, p1, p2, html);
+                  const p1 = ps[0];
+                  const p2 = ps[1];
+                  const control = ps[2];
+                  const c = center(p1, p2, control);
+                  if (c === null) {
+                    return makeLine(p1, p2, html);
+                  }
+                  const dot = (control.x - p1.x) * (p2.x - control.x) + (control.y - p1.y) * (p2.y - control.y);
+                  const dA = {x: -(p1.y - c.y), y: p1.x - c.x};
+                  const cA = {x: control.x - c.x, y: control.y - c.y};
+                  const dir = (dA.x * cA.x + dA.y * cA.y) / Math.sqrt(dA.x ** 2 + dA.y ** 2) * Math.sqrt(cA.x ** 2 + cA.y ** 2);
+                return makeArc(griddedUnmap(p1), griddedUnmap(p2), griddedUnmap(c), dot < 0, dir < 0, html);
               }
           });
 
@@ -196,11 +204,14 @@
                       const p2 = points[1];
                       const control = griddedMap(editorMove);
                       const c = center(p1, p2, control);
-                      console.log("center:", c, p1, p2, control);
                       if (c === null) {
                         return makeLine(p1, p2, html);
                       }
-		            return makeArc(griddedUnmap(p1), griddedUnmap(p2), griddedUnmap(c), html);
+                      const dot = (control.x - p1.x) * (p2.x - control.x) + (control.y - p1.y) * (p2.y - control.y);
+                      const dA = {x: -(p1.y - c.y), y: p1.x - c.x};
+                      const cA = {x: control.x - c.x, y: control.y - c.y};
+                      const dir = (dA.x * cA.x + dA.y * cA.y) / Math.sqrt(dA.x ** 2 + dA.y ** 2) * Math.sqrt(cA.x ** 2 + cA.y ** 2);
+		            return makeArc(griddedUnmap(p1), griddedUnmap(p2), griddedUnmap(c), dot < 0, dir < 0, html);
 		        }
 	      }
 
@@ -410,7 +421,7 @@ function center(p1, p2, p3) {
 
         #editorPane {
             background-color: transparent;
-            width: calc(384px);
+            width: calc(320px);
             height: calc(512px);
 	    margin: 40px;
         }
@@ -418,7 +429,7 @@ function center(p1, p2, p3) {
         #editorPane2 {
             box-sizing: border-box;
             background-color: transparent;
-            width: calc(384px + 40px + 40px);
+            width: calc(320px + 40px + 40px);
             height: calc(512px + 40px + 40px);
             border: 40px ridge rgba(211, 220, 220, .6);
             pointer-events: none;
@@ -427,7 +438,7 @@ function center(p1, p2, p3) {
         #gridCanvas {
             box-sizing: border-box;
             background-color: #222;
-            width: calc(384px + 40px + 40px);
+            width: calc(320px + 40px + 40px);
             height: calc(512px + 40px + 40px);
             border: 40px ridge rgba(211, 220, 220, .6);
             pointer-events: none;
