@@ -103,6 +103,7 @@
                   const ps = seg.state;
                   const p1 = ps[0];
                   const p2 = ps[1];
+                  const threshold = 0.1;
                   const dist = Math.abs(
                       (p2.y - p1.y) * p.x -
                       (p2.x - p1.x) * p.y +
@@ -111,12 +112,18 @@
                       /
                       Math.sqrt((p2.y - p1.y) ** 2 + (p2.x - p1.x) ** 2);
                   const xIn = p1.x >= p2.x ?
-                        p.x >= p2.x - 4 && p1.x + 4 > p.x :
-                        p.x >= p1.x - 4 && p2.x + 4 > p.x;
+                        p.x >= p2.x - threshold && p1.x + threshold > p.x :
+                        p.x >= p1.x - threshold && p2.x + threshold > p.x;
                   const yIn = p1.y >= p2.y ?
-                        p.y >= p2.y - 4 && p1.y + 4 > p.y :
-                        p.y >= p1.y - 4 && p2.y + 4 > p.y;
-                  return xIn && yIn && dist < 4;
+                        p.y >= p2.y - threshold && p1.y + threshold > p.y :
+                        p.y >= p1.y - threshold && p2.y + threshold > p.y;
+                  return xIn && yIn && dist < threshold;
+              } else if (seg.command === "arc") {
+                const ps = seg.state;
+                const p1 = ps[0];
+                const p2 = ps[1];
+                debugger;
+                return false;
               }
               return false;
           };
