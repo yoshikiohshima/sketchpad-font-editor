@@ -15,7 +15,7 @@
                 const deleteButton = Events.click("#delete");
                 const charClick = Events.click("#chars");
 
-                const gridSpec = {width: 320, height: 512, x: 10, y: 16};
+                const gridSpec = {width: 512, height: 512, x: 16, y: 16};
 
                 const toolState = Behaviors.collect(
                     "line",
@@ -452,7 +452,7 @@
 
         #editorPane {
             background-color: transparent;
-            width: calc(320px);
+            width: calc(512px);
             height: calc(512px);
 	    margin: 40px;
         }
@@ -460,7 +460,7 @@
         #editorPane2 {
             box-sizing: border-box;
             background-color: transparent;
-            width: calc(320px + 40px + 40px);
+            width: calc(512px + 40px + 40px);
             height: calc(512px + 40px + 40px);
             border: 40px ridge rgba(211, 220, 220, .6);
             pointer-events: none;
@@ -469,7 +469,7 @@
         #gridCanvas {
             box-sizing: border-box;
             background-color: #222;
-            width: calc(320px + 40px + 40px);
+            width: calc(512px + 40px + 40px);
             height: calc(512px + 40px + 40px);
             border: 40px ridge rgba(211, 220, 220, .6);
             pointer-events: none;
