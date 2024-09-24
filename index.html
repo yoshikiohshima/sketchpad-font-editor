@@ -15,7 +15,7 @@
                 const deleteButton = Events.click("#delete");
                 const charClick = Events.click("#chars");
 
-                const gridSpec = {width: 512, height: 512, x: 16, y: 16};
+                const gridSpec = {width: 512, height: 512, x: 16, y: 16, lineWidth: 8};
 
                 const toolState = Behaviors.collect(
                     "line",
@@ -172,12 +172,12 @@
                 });
 
                 const makeLine = (p1, p2, html) => {
-                    return html`<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="#ddd" stroke-width="4"></line>`;
+                    return html`<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="#ddd" stroke-width="${gridSpec.lineWidth}" stroke-linecap="round"></line>`;
                 };
 
                 const makeArc = (p1, p2, p3, long, sweep, html) => {
                     const r = Math.sqrt((p1.x - p3.x) ** 2 + (p1.y - p3.y) ** 2);
-                    return html`<path d="M ${p1.x} ${p1.y} A ${r} ${r} 0 ${long ? "1" : "0"} ${sweep ? "1" : "0"} ${p2.x} ${p2.y}" stroke="#ddd" stroke-width="4" fill="transparent"></path>`;
+                    return html`<path d="M ${p1.x} ${p1.y} A ${r} ${r} 0 ${long ? "1" : "0"} ${sweep ? "1" : "0"} ${p2.x} ${p2.y}" stroke="#ddd" stroke-width="${gridSpec.lineWidth}" fill="transparent" stroke-linecap="round"></path>`;
                 };
 
                 const lines = segments.map((seg) => {
