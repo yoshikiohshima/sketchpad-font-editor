@@ -7,7 +7,6 @@
       <div id="renkon">
         <script type="reactive">
           const gridSpec = {width: 512, height: 512, x: 16, y: 16, lineWidth: 32};
-          const exampleString = "123 abc";
           const exampleSettings = {advanceWidth: 200, originX: 50};
           const {editor} = import("../editor.js");
           Renkon.merge(editor);
@@ -33,7 +32,10 @@
             <div id="gridCursor"></div>
           </div>
         </div>
+        <hr>
         <div id="example"></div>
+        <div id="exampleEditor" contentEditable>Hello Sketchpad!</div>
+        <hr>
         <div id="chars"></div>
       </div>
       <style>
@@ -131,11 +133,18 @@
             height: 40px;
             width: 70%;
             margin-top: 20px;
-            margin-bottom: 20px;
+
         }
 
         .exampleView {
             display: flex;
+        }
+
+        #exampleEditor {
+            margin-top: 5px;
+            margin-bottom: 20px;
+            border: 2px ridge #222;
+            width: 70%;
         }
 
         .exampleCharHolder {

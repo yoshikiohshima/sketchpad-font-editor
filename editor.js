@@ -9,6 +9,10 @@ export function editor() {
     const deleteButton = Events.click("#delete");
     const charClick = Events.click("#chars");
 
+    const exampleStringInput = Events.input("#exampleEditor");
+
+    const exampleString = Behaviors.collect(document.querySelector("#exampleEditor").textContent, exampleStringInput, (_old, v) => v.target.textContent);
+
     const toolState = Behaviors.collect(
         "line",
         Events.or(lineButton, arcButton, arc2Button, deleteButton),
