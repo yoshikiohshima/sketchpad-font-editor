@@ -364,7 +364,8 @@ export function editor() {
         const c = String.fromCharCode(i);
         const segs = charData.data.get(c) || [];
         const ls = lines(segs);
-        return html`<div class="charHolder" id="holder-${i}"><div class="charName">${c}</div><div class="charView">
+        const isSelected = charData.selected === c ? "charSelected" : "";
+        return html`<div class="charHolder" id="holder-${i}"><div class="charName ${isSelected}">${c}</div><div class="charView">
             ${html`<svg viewBox="0 0 ${gridSpec.width} ${gridSpec.height}" xmlns="http://www.w3.org/2000/svg">${ls}</svg>`}</div></div>`;
     }
 
