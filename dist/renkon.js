@@ -29773,6 +29773,8 @@ class ProgramState {
     __publicField(this, "time");
     __publicField(this, "startTime");
     __publicField(this, "evaluatorRunning");
+    __publicField(this, "exports");
+    __publicField(this, "imports");
     __publicField(this, "updated");
     __publicField(this, "app");
     __publicField(this, "noTicking");
@@ -30040,40 +30042,82 @@ class ProgramState {
       this.noTickingEvaluator();
     }
   }
+  setResolvedForSubgraph(varName, value) {
+    this.setResolved(varName, value);
+    this.inputArray.set(varName, []);
+    this.streams.set(varName, new Behavior());
+  }
   merge(func) {
     let scripts = this.scripts;
     const { output } = getFunctionBody(func.toString(), true);
     this.setupProgram([...scripts, output]);
   }
   renkonify(func, optSystem) {
-    const programState = new ProgramState(Date.now(), optSystem);
+    const programState = new ProgramState(0, optSystem);
     const { params, returnArray, output } = getFunctionBody(func.toString(), false);
-    console.log(params, returnArray, output);
-    programState.setupProgram([output]);
-    function generator(...args) {
-      const gen = renkonBody(...args);
+    console.log(params, returnArray, output, this);
+    const self = this;
+    const receivers = params.map((r) => `const ${r} = undefined;`).join("\n");
+    programState.setupProgram([receivers, output]);
+    function generator(params2) {
+      const gen = renkonBody(params2);
       gen.done = false;
       return Events.next(gen);
     }
-    async function* renkonBody(...args) {
-      for (let i = 0; i < params.length; i++) {
-        programState.setResolved(params[i], args[i]);
+    async function* renkonBody(args) {
+      let lastYielded = void 0;
+      for (let key in args) {
+        programState.setResolvedForSubgraph(
+          key,
+          { value: args[key], time: self.time }
+        );
       }
       while (true) {
-        programState.evaluate(programState.time);
+        programState.evaluate(self.time);
         const result = {};
+        const resultTest = [];
         if (returnArray) {
           for (const n of returnArray) {
             const v = programState.resolved.get(n);
+            resultTest.push(v ? v.value : void 0);
             if (v && v.value !== void 0) {
               result[n] = v.value;
             }
           }
         }
-        yield result;
+        yield !self.equals(lastYielded, resultTest) ? result : void 0;
+        lastYielded = resultTest;
       }
     }
     return generator;
+  }
+  renkonify2(func, optSystem) {
+    const programState = new ProgramState(0, optSystem);
+    const { params, returnArray, output } = getFunctionBody(func.toString(), false);
+    const receivers = params.map((r) => `const ${r} = undefined;`).join("\n");
+    programState.setupProgram([receivers, output]);
+    programState.exports = returnArray || void 0;
+    programState.imports = params;
+    return programState;
+  }
+  evaluateSubProgram(programState, params) {
+    for (let key in params) {
+      programState.registerEvent(key, params[key]);
+    }
+    programState.evaluate(this.time);
+    if (!programState.updated) {
+      return void 0;
+    }
+    const result = {};
+    if (programState.exports) {
+      for (const n of programState.exports) {
+        const v = programState.resolved.get(n);
+        if (v && v.value !== void 0) {
+          result[n] = v.value;
+        }
+      }
+    }
+    return result;
   }
   spaceURL(partialURL) {
     var _a3, _b2;

@@ -5,12 +5,13 @@ export function editor() {
 
     const lineButton = Events.click("#line");
     const arcButton = Events.click("#arc");
+    const arc2Button = Events.click("#arc2");
     const deleteButton = Events.click("#delete");
     const charClick = Events.click("#chars");
 
     const toolState = Behaviors.collect(
         "line",
-        Events.or(lineButton, arcButton, deleteButton),
+        Events.or(lineButton, arcButton, arc2Button, deleteButton),
         (old, evt) => evt.target.id
     );
 
@@ -25,21 +26,27 @@ export function editor() {
 
     console.log(toolState);
 
-    const selectedChar = Events.collect(" ", charClick, (old, evt) => {
+    const charSelected = Events.collect(" ", charClick, (old, evt) => {
         const id = evt.target.id;
         const match = /([0-9]+)/.exec(id);
         const n = parseFloat(match[1]);
         return String.fromCharCode(n);
     });
 
-    const coordinateMap = (evt) => {
-        const rect = evt.target.getBoundingClientRect();
-        return {
-            x: Math.floor(evt.x - rect.x) - 40,
-            y: gridSpec.height - Math.floor(evt.y - rect.top - 40)
+    console.log(charSelected);
+
+    const charData = Behaviors.collect({selected: " ", segs: [], data: new Map()}, Events.or(charSelected, Events.change($segments)), (current, change) => {
+        if (typeof change === "string") {
+            // selected char changed
+            if (current.selected === change) {return current;}
+            current.data.set(current.selected, current.segs);
+            return {selected: change, segs: current.segs, data: current.data}
         }
-    };
-    
+        // segments updated
+        current.data.set(current.selected, change);
+        return {selected: current.selected, segs: change, data: current.data};
+    });
+
     const griddedMap = (evt) => {
         const rect = evt.target.getBoundingClientRect();
         const gridX = gridSpec.width / gridSpec.x;
@@ -56,7 +63,7 @@ export function editor() {
         const x = (evt.clientX - rect.x - (gridX/2)) / gridX;
         const y = gridSpec.y - 1 - ((evt.clientY - rect.y - (gridY / 2)) / gridY);
         return {x, y, target: evt.target};
-    }
+    };
 
     const griddedUnmap = (p, useRect) => {
         const gridX = gridSpec.width / gridSpec.x;
@@ -95,6 +102,13 @@ export function editor() {
             if (points.points.length === 2) {
                 return {command: "arc", points: [], state: newPoints, shiftKey};
             }
+        }  else if (points.command === "arc2") {
+            if (points.points.length === 0 || points.points.length === 1) {
+                return {command: "arc2", points: newPoints, state: null};
+            }
+            if (points.points.length === 2) {
+                return {command: "arc2", points: [], state: newPoints, shiftKey};
+            }
         } else if (points.command === "delete") {
             return {command: "delete", points: [], state: [toCharCoordinates(evt)], shiftKey};
         }
@@ -102,7 +116,6 @@ export function editor() {
 
     const hit = (seg, p) => {
         const hitLine = (p1, p2, p) => {
-
             const threshold = 0.1;
             const dist = Math.abs(
                 (p2.y - p1.y) * p.x -
@@ -138,13 +151,52 @@ export function editor() {
             const myC = center(p1, p2, p);
             if (distance(myC, c) > threshold) return false;
             return true;
+        } else if (seg.command === "arc2") {
+            const threshold = 0.5;
+            const ps = seg.state;
+            const center = ps[0];
+            const start = ps[1];
+            const end = ps[2];
+            const shiftKey = seg.shiftKey;
+
+            if (Math.abs(distance(start, center) - distance(p, center)) > threshold) return false;
+
+            const rot = rotation(start, end, center);
+            const pRot = rotation(start, p, center);
+            return pRot < rot;
         }
         return false;
     };
 
     const distance = (p1, p2) => Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+    const rotation = (p1, p2, center, winding) => {
+        let n1 = Math.atan2(p1.y - center.y, p1.x - center.x);
+        let n2 = Math.atan2(p2.y - center.y, p2.x - center.x);
 
-    const segments = Behaviors.collect([], interactionBuffer, (segs, buffer) => {
+        if (Math.sign(n1) !== Math.sign(n2)) {
+            n1 = Math.PI * 2 + n1;
+            n2 = Math.PI * 2 + n2;
+        }
+        let diff = n2 - n1;
+        if (diff < 0) {diff += Math.PI * 2}
+        return winding ? Math.PI * 2 - diff: diff;;
+    }
+
+    // console.log(rotation({x: 10, y: 5}, {x: 5, y: 10}, {x: 5, y: 5}));
+    // console.log(rotation({x: 10, y: 4}, {x: 5, y: 10}, {x: 5, y: 5}));
+    // console.log(rotation({x: 10, y: 4}, {x: 10, y: 3}, {x: 5, y: 5}));
+    // console.log(rotation({x: 1, y: 4}, {x: 1, y: 6}, {x: 5, y: 5}));
+    // console.log(rotation({x: 1, y: 6}, {x: 1, y: 4}, {x: 5, y: 5}));
+    // console.log(rotation({x: 1, y: 6}, {x: 1, y: 4}, {x: 5, y: 5}, true));
+
+    const segments = Behaviors.collect([], Events.or(interactionBuffer, charData), (segs, change) => {
+        if (change.selected !== undefined) {
+            // charData changed
+            const maybe = change.data.get(change.selected);
+            if (!maybe) {return [];}
+            return maybe;
+        }
+        const buffer = change;
         if (!buffer.state) {return segs;}
         if (buffer.command === "delete") {
             const p = buffer.state[0];
@@ -171,32 +223,66 @@ export function editor() {
         return html`<path d="M ${p1.x} ${p1.y} A ${r} ${r} 0 ${long ? "1" : "0"} ${sweep ? "1" : "0"} ${p2.x} ${p2.y}" stroke="#ddd" stroke-width="${gridSpec.lineWidth}" fill="transparent" stroke-linecap="round"></path>`;
     };
 
-    const lines = segments.map((seg) => {
-        if (seg.command === "line") {
-            const ps = seg.state;
-            const p1 = griddedUnmap(ps[0]);
-            const p2 = griddedUnmap(ps[1]);
-            return makeLine(p1, p2, html);
-        }
-        if (seg.command === "arc") {
-            const ps = seg.state;
-            const p1 = ps[0];
-            const p2 = ps[1];
-            const control = ps[2];
-            const c = center(p1, p2, control);
-            const shiftKey = seg.shiftKey;
-            const dot = (control.x - p1.x) * (p2.x - control.x) + (control.y - p1.y) * (p2.y - control.y);
-            if (c === null || Math.abs(dot) < 0.001) {
-                return makeLine(griddedUnmap(p1), griddedUnmap(p2), html);
-            }
-            const dA = {x: -(p1.y - c.y), y: p1.x - c.x};
-            const cA = {x: control.x - c.x, y: control.y - c.y};
-            const dir = (dA.x * cA.x + dA.y * cA.y) / Math.sqrt(dA.x ** 2 + dA.y ** 2) * Math.sqrt(cA.x ** 2 + cA.y ** 2);
-            return makeArc(griddedUnmap(p1), griddedUnmap(p2), griddedUnmap(c), shiftKey ? dot >= 0 : dot < 0, shiftKey ? dir >= 0 : dir < 0, html);
-        }
-    });
+    const makeArc2 = (start, end, center, long, sweep, html) => {
+        const r = distance(center, start);
+        return html`<path d="M ${start.x} ${start.y} A ${r} ${r} 0 ${long ? "1" : "0"} ${sweep ? "1" : "0"} ${end.x} ${end.y}" stroke="#ddd" stroke-width="${gridSpec.lineWidth}" fill="transparent" stroke-linecap="round"></path>`;
+    };
 
-    const linesSVG = html`<svg viewBox="0 0 ${gridSpec.width} ${gridSpec.height}" xmlns="http://www.w3.org/2000/svg">${[...lines, rubberBandLine]}</svg>`;
+    const makeCircle = (center, p, html) => {
+        return html`<circle cx="${center.x}" cy="${center.y}" r="${distance(center, p)}" stroke="#ddd" stroke-width="${gridSpec.lineWidth}" fill="transparent" stroke-linecap="round"></path>`;
+    };
+
+    const lines = (segs) => {
+        return segs.map((seg) => {
+            if (seg.command === "line") {
+                const ps = seg.state;
+                const p1 = griddedUnmap(ps[0]);
+                const p2 = griddedUnmap(ps[1]);
+                return makeLine(p1, p2, html);
+            }
+            if (seg.command === "arc") {
+                const ps = seg.state;
+                const p1 = ps[0];
+                const p2 = ps[1];
+                const control = ps[2];
+                const c = center(p1, p2, control);
+                const shiftKey = seg.shiftKey;
+                const dot = (control.x - p1.x) * (p2.x - control.x) + (control.y - p1.y) * (p2.y - control.y);
+                if (c === null || Math.abs(dot) < 0.001) {
+                    return makeLine(griddedUnmap(p1), griddedUnmap(p2), html);
+                }
+                const dA = {x: -(p1.y - c.y), y: p1.x - c.x};
+                const cA = {x: control.x - c.x, y: control.y - c.y};
+                const dir = (dA.x * cA.x + dA.y * cA.y) / Math.sqrt(dA.x ** 2 + dA.y ** 2) * Math.sqrt(cA.x ** 2 + cA.y ** 2);
+                return makeArc(griddedUnmap(p1), griddedUnmap(p2), griddedUnmap(c), shiftKey ? dot >= 0 : dot < 0, shiftKey ? dir >= 0 : dir < 0, html);
+            } if (seg.command === "arc2") {
+                const ps = seg.state;
+                const center = ps[0];
+                const start = ps[1];
+                const control = ps[2];
+                const shiftKey = seg.shiftKey;
+
+                const r = distance(center, start);
+                const rot = rotation(start, control, center);
+
+                const startRad = Math.atan2(start.y - center.y, start.x - center.x);
+                const endRad = Math.atan2(control.y - center.y, control.x - center.x);
+
+                const end = {x: r * Math.cos(endRad) + center.x, y: r * Math.sin(endRad) + center.y};
+
+                if (Math.abs(rot) < 0.001) {
+                    return makeCircle(griddedUnmap(center), griddedUnmap(start), html);
+                }
+
+                return makeArc2(griddedUnmap(start), griddedUnmap(end), griddedUnmap(center), shiftKey ? rot < Math.PI : rot > Math.PI, shiftKey, html);
+            }
+        });
+    };
+
+    const linesSVG = ((segments, lines) => {
+        const ls = lines(segments);
+        return html`<svg viewBox="0 0 ${gridSpec.width} ${gridSpec.height}" xmlns="http://www.w3.org/2000/svg">${[...ls, rubberBandLine]}</svg>`;
+    })(segments, lines);
 
     render(linesSVG, document.querySelector("#editorPane2"));
 
@@ -239,6 +325,32 @@ export function editor() {
                 const dir = (dA.x * cA.x + dA.y * cA.y) / Math.sqrt(dA.x ** 2 + dA.y ** 2) * Math.sqrt(cA.x ** 2 + cA.y ** 2);
                 return makeArc(griddedUnmap(p1), griddedUnmap(p2), griddedUnmap(c),  shiftKey ? dot >= 0 : dot < 0, shiftKey ? dir >= 0 : dir < 0, html);
             }
+        } else if (interactionBuffer.command === "arc2") {
+            if (points.length === 1) {
+                const p1 = griddedUnmap(points[0]);
+                const p2 = griddedUnmap(griddedMap(editorMove));
+                return makeLine(p1, p2, html);
+            } else if (points.length === 2) {
+                const center = points[0];
+                const start = points[1];
+                const control = griddedMap(editorMove);
+                const shiftKey = editorMove.shiftKey;
+                const dot = 1;
+
+                const r = distance(center, start);
+                const rot = rotation(start, control, center);
+
+                const startRad = Math.atan2(start.y - center.y, start.x - center.x);
+                const endRad = Math.atan2(control.y - center.y, control.x - center.x);
+
+                const end = {x: r * Math.cos(endRad) + center.x, y: r * Math.sin(endRad) + center.y};
+
+                if (Math.abs(rot) < 0.001) {
+                    return makeCircle(griddedUnmap(center), griddedUnmap(start), html);
+                }
+    
+                return makeArc2(griddedUnmap(start), griddedUnmap(end), griddedUnmap(center), shiftKey ? rot < Math.PI : rot > Math.PI, shiftKey, html);
+            }
         }
         return makeLine({x: 0, y: 0}, {x: 0, y: 0}, html);
     })(Behaviors.keep(interactionBuffer), editorMove, html);
@@ -248,16 +360,31 @@ export function editor() {
         rubberBandUpdate,
         (_old, r) => r);
     
-    const charEntry = (i, html) => {
+    const charEntry = (i, charData, html) => {
         const c = String.fromCharCode(i);
-        return html`<div class="charHolder" id="holder-${i}"><div class="charName">${c}</div><div class="charView"></div></div>`;
+        const segs = charData.data.get(c) || [];
+        const ls = lines(segs);
+        return html`<div class="charHolder" id="holder-${i}"><div class="charName">${c}</div><div class="charView">
+            ${html`<svg viewBox="0 0 ${gridSpec.width} ${gridSpec.height}" xmlns="http://www.w3.org/2000/svg">${ls}</svg>`}</div></div>`;
     }
 
-    const charList = ((html, charEntry) => [...Array(96).keys()].map((i) => charEntry(i + 32, html)))(html, charEntry);
+    const charList = ((html, charEntry, charData) => [...Array(96).keys()].map((i) => charEntry(i + 32, charData, html)))(html, charEntry, charData);
 
     const charsHTML = html`<div class="charViews">${charList}</div>`;
 
+    const exampleDisplay = ((charData, exampleString, html) => {
+        const result = exampleString.split("").map((c) => {
+            const segs = charData.data.get(c) || [];
+            const ls = lines(segs);
+            const svg = html`<svg viewBox="0 0 ${gridSpec.width} ${gridSpec.height}" xmlns="http://www.w3.org/2000/svg">${ls}</svg>`;
+            return  html`<div class="exampleCharHolder"><div class="exampleChar">${svg}</div></div>`;
+        });
+
+        return html`<div class="exampleView">${result}</div>`;
+    })(charData, exampleString, html);
+
     render(charsHTML, document.querySelector("#chars"));
+    render(exampleDisplay, document.querySelector("#example"));
 
     function makeGridCanvas(options) {
         const {width, height, x, y, radius, canvas} = options;

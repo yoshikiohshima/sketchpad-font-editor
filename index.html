@@ -6,7 +6,9 @@
     <body>
       <div id="renkon">
         <script type="reactive">
-          const gridSpec = {width: 512, height: 512, x: 16, y: 16, lineWidth: 8};
+          const gridSpec = {width: 512, height: 512, x: 16, y: 16, lineWidth: 32};
+          const exampleString = "123 abc";
+          const exampleSettings = {advanceWidth: 200, originX: 50};
           const {editor} = import("../editor.js");
           Renkon.merge(editor);
         </script>
@@ -15,6 +17,7 @@
           <div id="tools">
             <div id="line" class="toolButton">Line</div>
             <div id="arc" class="toolButton">Arc</div>
+            <div id="arc2" class="toolButton">Arc 2</div>
             <div id="delete" class="toolButton">Delete</div>
           </div>
           <div id="editorPaneHolder">
@@ -30,11 +33,13 @@
             <div id="gridCursor"></div>
           </div>
         </div>
+        <div id="example"></div>
         <div id="chars"></div>
       </div>
       <style>
         #all {
-            display: grid;
+            display: flex;
+            flex-direction: column;
             height: 100%;
         }
 
@@ -58,15 +63,15 @@
 
         .charName {
             color: black;
-            height: 16px;
+            height: 20px;
             pointer-events: none;
         }
 
         .charView {
-            width: 60px;
-            height: 60px;
+            width: 32px;
+            height: 32px;
             border: 1px ridge rgba(211, 220, 220, .6);
-            background-color: #510;
+            background-color: #222;
             pointer-events: none;
         }
         
@@ -121,14 +126,40 @@
             pointer-events: none;
         }
 
-        #chars {
+        #example {
+            background-color: #222;
+            height: 40px;
+            width: 70%;
             margin-top: 20px;
+            margin-bottom: 20px;
+        }
+
+        .exampleView {
+            display: flex;
+        }
+
+        .exampleCharHolder {
+
+        }
+
+        .exampleChar {
+            width: 32px;
+            height: 32px;
+            border: 0px;
+            background-color: #222;
+            pointer-events: none;
+        }
+
+        #chars {
+            width: 70%;
             background-color: #ccc;
+            flex-grow: 1;
         }
 
         .charViews {
             display: flex;
             flex-wrap: wrap;
+            justify-content: space-evenly;
         }
 
         #gridCursor {
