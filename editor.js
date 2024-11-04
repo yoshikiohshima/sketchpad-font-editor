@@ -3,19 +3,22 @@ export function editor() {
     const html = preactModule.html;
     const render = preactModule.render;
 
-    const lineButton = Events.click("#line");
-    const arcButton = Events.click("#arc");
-    const arc2Button = Events.click("#arc2");
-    const deleteButton = Events.click("#delete");
-    const charClick = Events.click("#chars");
+    const selectButton = Events.listener(document.querySelector("#select"), "click", evt => evt);
+    const lineButton = Events.listener(document.querySelector("#line"), "click", evt => evt);
+    const arc2Button = Events.listener(document.querySelector("#arc2"), "click", evt => evt);
+    const deleteButton = Events.listener(document.querySelector("#delete"), "click", evt => evt);
 
-    const exampleStringInput = Events.input("#exampleEditor");
+    const charClick = Events.listener(document.querySelector("#chars"), "click", evt => evt);
+
+    const dragRequest = Events.receiver();
+
+    const exampleStringInput = Events.listener(document.querySelector("#exampleEditor"), "input", evt => evt);
 
     const exampleString = Behaviors.collect(document.querySelector("#exampleEditor").textContent, exampleStringInput, (_old, v) => v.target.textContent);
 
     const toolState = Behaviors.collect(
         "line",
-        Events.or(lineButton, arcButton, arc2Button, deleteButton),
+        Events.or(selectButton, lineButton, arc2Button, deleteButton),
         (old, evt) => evt.target.id
     );
 
@@ -92,6 +95,9 @@ export function editor() {
         const shiftKey = evt.shiftKey;
         const p = griddedMap(evt);
         const newPoints = [...points.points, p];
+        if (points.command === "select") {
+            return {command: "select", points: [], state: p};
+        }
         if (points.command === "line") {
             if (points.points.length === 0) {
                 return {command: "line", points: newPoints, state: null};
@@ -99,14 +105,7 @@ export function editor() {
             if (points.points.length === 1) {
                 return {command: "line", points: [], state: newPoints, shiftKey};
             }
-        } else if (points.command === "arc") {
-            if (points.points.length === 0 || points.points.length === 1) {
-                return {command: "arc", points: newPoints, state: null};
-            }
-            if (points.points.length === 2) {
-                return {command: "arc", points: [], state: newPoints, shiftKey};
-            }
-        }  else if (points.command === "arc2") {
+        } else if (points.command === "arc2") {
             if (points.points.length === 0 || points.points.length === 1) {
                 return {command: "arc2", points: newPoints, state: null};
             }
@@ -141,20 +140,6 @@ export function editor() {
             const p1 = ps[0];
             const p2 = ps[1];
             return hitLine(p1, p2, p);
-        } else if (seg.command === "arc") {
-            const threshold = 0.5;
-            const ps = seg.state;
-            const p1 = ps[0];
-            const p2 = ps[1];
-            const control = ps[2];
-            const c = center(p1, p2, control);
-            if (c === null) {
-                return hitLine(p1, p2, p);
-            }
-            if (Math.abs(distance(p1, c) - distance(p, c)) > threshold) return false;
-            const myC = center(p1, p2, p);
-            if (distance(myC, c) > threshold) return false;
-            return true;
         } else if (seg.command === "arc2") {
             const threshold = 0.5;
             const ps = seg.state;
@@ -186,14 +171,36 @@ export function editor() {
         return winding ? Math.PI * 2 - diff: diff;;
     }
 
-    // console.log(rotation({x: 10, y: 5}, {x: 5, y: 10}, {x: 5, y: 5}));
-    // console.log(rotation({x: 10, y: 4}, {x: 5, y: 10}, {x: 5, y: 5}));
-    // console.log(rotation({x: 10, y: 4}, {x: 10, y: 3}, {x: 5, y: 5}));
-    // console.log(rotation({x: 1, y: 4}, {x: 1, y: 6}, {x: 5, y: 5}));
-    // console.log(rotation({x: 1, y: 6}, {x: 1, y: 4}, {x: 5, y: 5}));
-    // console.log(rotation({x: 1, y: 6}, {x: 1, y: 4}, {x: 5, y: 5}, true));
+    const arcData = (seg) => {
+        const ps = seg.state;
+        const center = ps[0];
+        const start = ps[1];
+        const control = ps[2];
+        const shiftKey = seg.shiftKey;
 
-    const segments = Behaviors.collect([], Events.or(interactionBuffer, charData), (segs, change) => {
+        const r = distance(center, start);
+        const rot = rotation(start, control, center);
+
+        const startRad = Math.atan2(start.y - center.y, start.x - center.x);
+        const endRad = Math.atan2(control.y - center.y, control.x - center.x);
+
+        const end = {x: r * Math.cos(endRad) + center.x, y: r * Math.sin(endRad) + center.y};
+
+        if (Math.abs(rot) < 0.001) {
+            return makeCircle(griddedUnmap(center), griddedUnmap(start), html);
+        }
+
+        return {command: "arc2", center, radius: r, start: startRad, end: endRad, shiftKey};
+    }
+
+    const segments = Behaviors.collect([], Events.or(interactionBuffer, Events.change(charData), dragRequest), (segs, change) => {
+        if (change.dragRequest === true) {
+            console.log("dragRequest", change);
+            const newSegs = [...segs];
+            console.log("setting", newSegs[change.maybeSelect.index] === change.maybeSelect.segment);
+            newSegs[change.maybeSelect.index].center = change.gridded;
+            return newSegs;
+        }
         if (change.selected !== undefined) {
             // charData changed
             const maybe = change.data.get(change.selected);
@@ -215,8 +222,56 @@ export function editor() {
             }
             return segs;
         }
+
+        if (buffer.command === "select") {
+            return segs;
+        }
+
+        if (buffer.command === "arc2") {
+            return [...segs, arcData(buffer)];
+        }
         return [...segs, buffer];
     });
+
+    const maybeSelect = Behaviors.collect(null, Events.or(interactionBuffer, editorUp), (_old, buffer) => {
+        if (toolState === "select" && buffer.state) {
+            const p = buffer.state;
+            for (let i = segments.length - 1; i >= 0; i--) {
+                const segment = segments[i];
+                if (segment.command === "arc2") {
+                    const {start, end, radius, center} = segment;
+                    const threshold = 0.1;
+                    const s = {x: Math.cos(start) * radius + center.x, y: Math.sin(start) * radius + center.y};
+                    const e = {x: Math.cos(end) * radius + center.x, y: Math.sin(end) * radius + center.y};
+
+                    if (distance(segment.center, p) < threshold) {
+                        return {index: i, segment, type: "center", point: p}
+                    }
+                    if (distance(s, p) < threshold) {
+                        return {index: i, segment, type: "start", point: p}
+                    }
+                    if (distance(e, p) < threshold) {
+                        return {index: i, segment, type: "end", point: p}
+                    }
+                }
+                if (segment.command === "line") {
+                }
+            }
+        }
+        return null;
+    });
+
+    console.log(maybeSelect);
+
+    const dragObject = ((evt) => {
+        const gridded = griddedMap(evt);
+        if (!maybeSelect) {return;}
+
+        if (maybeSelect.type === "center") {
+            console.log(maybeSelect);
+            Events.send(dragRequest, {dragRequest: true, maybeSelect, gridded});
+        }
+    })(editorMove);
 
     const makeLine = (p1, p2, html) => {
         return html`<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="#ddd" stroke-width="${gridSpec.lineWidth}" stroke-linecap="round"></line>`;
@@ -243,42 +298,18 @@ export function editor() {
                 const p1 = griddedUnmap(ps[0]);
                 const p2 = griddedUnmap(ps[1]);
                 return makeLine(p1, p2, html);
-            }
-            if (seg.command === "arc") {
-                const ps = seg.state;
-                const p1 = ps[0];
-                const p2 = ps[1];
-                const control = ps[2];
-                const c = center(p1, p2, control);
-                const shiftKey = seg.shiftKey;
-                const dot = (control.x - p1.x) * (p2.x - control.x) + (control.y - p1.y) * (p2.y - control.y);
-                if (c === null || Math.abs(dot) < 0.001) {
-                    return makeLine(griddedUnmap(p1), griddedUnmap(p2), html);
-                }
-                const dA = {x: -(p1.y - c.y), y: p1.x - c.x};
-                const cA = {x: control.x - c.x, y: control.y - c.y};
-                const dir = (dA.x * cA.x + dA.y * cA.y) / Math.sqrt(dA.x ** 2 + dA.y ** 2) * Math.sqrt(cA.x ** 2 + cA.y ** 2);
-                return makeArc(griddedUnmap(p1), griddedUnmap(p2), griddedUnmap(c), shiftKey ? dot >= 0 : dot < 0, shiftKey ? dir >= 0 : dir < 0, html);
             } if (seg.command === "arc2") {
-                const ps = seg.state;
-                const center = ps[0];
-                const start = ps[1];
-                const control = ps[2];
-                const shiftKey = seg.shiftKey;
+                const {center, radius, start, end, shiftKey} = seg;
 
-                const r = distance(center, start);
-                const rot = rotation(start, control, center);
+                const s = {x: Math.cos(start) * radius + center.x, y: Math.sin(start) * radius + center.y};
+                const e = {x: Math.cos(end) * radius + center.x, y: Math.sin(end) * radius + center.y};
 
-                const startRad = Math.atan2(start.y - center.y, start.x - center.x);
-                const endRad = Math.atan2(control.y - center.y, control.x - center.x);
-
-                const end = {x: r * Math.cos(endRad) + center.x, y: r * Math.sin(endRad) + center.y};
-
+                const rot = rotation(s, e, center);
                 if (Math.abs(rot) < 0.001) {
                     return makeCircle(griddedUnmap(center), griddedUnmap(start), html);
                 }
 
-                return makeArc2(griddedUnmap(start), griddedUnmap(end), griddedUnmap(center), shiftKey ? rot < Math.PI : rot > Math.PI, shiftKey, html);
+                return makeArc2(griddedUnmap(s), griddedUnmap(e), griddedUnmap(center), shiftKey ? rot < Math.PI : rot > Math.PI, shiftKey, html);
             }
         });
     };
@@ -292,6 +323,7 @@ export function editor() {
 
     const editorDown = Events.listener("#editorPane", "pointerdown", (evt) => evt);
     const editorMove = Events.listener("#editorPane", "pointermove", (evt) => evt);
+    const editorUp = Events.listener("#editorPane", "pointerup", (evt) => evt);
 
     const gridMover = ((editorMove, toolState) => {
         const gridded = toolState === "delete" ? toCharCoordinates(editorMove) : griddedMap(editorMove);
@@ -352,18 +384,17 @@ export function editor() {
                 if (Math.abs(rot) < 0.001) {
                     return makeCircle(griddedUnmap(center), griddedUnmap(start), html);
                 }
-    
                 return makeArc2(griddedUnmap(start), griddedUnmap(end), griddedUnmap(center), shiftKey ? rot < Math.PI : rot > Math.PI, shiftKey, html);
             }
         }
-        return makeLine({x: 0, y: 0}, {x: 0, y: 0}, html);
+        return makeLine({x: -1, y: -1}, {x: -1, y: -1}, html);
     })(Behaviors.keep(interactionBuffer), editorMove, html);
 
     const rubberBandLine = Behaviors.collect(
         makeLine({x: 0, y: 0}, {x: 0, y: 0}, html),
         rubberBandUpdate,
         (_old, r) => r);
-    
+
     const charEntry = (i, charData, html) => {
         const c = String.fromCharCode(i);
         const segs = charData.data.get(c) || [];
@@ -445,7 +476,7 @@ export function editor() {
             // slopeBC * (x - midBC.x) + midBC.y = p3.y;
             // slopeBC * x - slopeBC * midBC.x = p3.y - midBC.y;
             // x = (slopeBC * midBC.x + p3.y - midBC.y) / slopeBC;
-            console.log("slopeBC", slopeBC);
+            // console.log("slopeBC", slopeBC);
             // if slopeBC is zero, that means that it is a right triangle. The center is the midpoint of AB;
             if (Math.abs(slopeBC) < 0.0001) {return midAB;}
             const x = midAC.x;
@@ -458,7 +489,7 @@ export function editor() {
             // slopeAC * (x - midAC.x) + midAC.y = p3.y;
             // slopeAC * x - slopeAC * midAC.x = p3.y - midAC.y;
             // x = (slopeAC * midAC.x + p3.y - midAC.y) / slopeAC;
-            console.log("slopeAC", slopeAC);
+            // console.log("slopeAC", slopeAC);
             // if slopeAC is zero, that means that it is a right triangle. The center is the midpoint of AB;
             if (Math.abs(slopeAC) < 0.0001) {return midAB;}
             const x = midBC.x;
@@ -484,7 +515,16 @@ export function editor() {
 
         return {x, y};
     }
-    
+
+    // console.log(rotation({x: 10, y: 5}, {x: 5, y: 10}, {x: 5, y: 5}));
+    // console.log(rotation({x: 10, y: 4}, {x: 5, y: 10}, {x: 5, y: 5}));
+    // console.log(rotation({x: 10, y: 4}, {x: 10, y: 3}, {x: 5, y: 5}));
+    // console.log(rotation({x: 1, y: 4}, {x: 1, y: 6}, {x: 5, y: 5}));
+    // console.log(rotation({x: 1, y: 6}, {x: 1, y: 4}, {x: 5, y: 5}));
+    // console.log(rotation({x: 1, y: 6}, {x: 1, y: 4}, {x: 5, y: 5}, true));
+
     const gridCanvas = makeGridCanvas({...gridSpec, canvas: document.querySelector("#gridCanvas")});
     return []
 }
+
+/* globals console Events Behaviors document */
