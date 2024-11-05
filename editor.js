@@ -67,7 +67,7 @@ export function editor() {
         const rect = evt.target.getBoundingClientRect();
         const gridX = gridSpec.width / gridSpec.x;
         const gridY = gridSpec.height / gridSpec.y;
-        const x = (evt.clientX - rect.x - (gridX/2)) / gridX;
+        const x = (evt.clientX - rect.x - (gridX / 2)) / gridX;
         const y = gridSpec.y - 1 - ((evt.clientY - rect.y - (gridY / 2)) / gridY);
         return {x, y, target: evt.target};
     };
@@ -83,8 +83,8 @@ export function editor() {
             offset = {x: 0, y: 0};
         }
         return {
-            x: p.x * gridX + (gridX/2) + offset.x,
-            y: (gridSpec.y - p.y - 1) * gridY + (gridY/2) + offset.y
+            x: p.x * gridX + (gridX / 2) + offset.x,
+            y: (gridSpec.y - p.y - 1) * gridY + (gridY / 2) + offset.y
         }
     };
 
@@ -168,7 +168,7 @@ export function editor() {
         }
         let diff = n2 - n1;
         if (diff < 0) {diff += Math.PI * 2}
-        return winding ? Math.PI * 2 - diff: diff;;
+        return winding ? Math.PI * 2 - diff : diff;
     }
 
     const arcData = (seg) => {
@@ -184,8 +184,6 @@ export function editor() {
         const startRad = Math.atan2(start.y - center.y, start.x - center.x);
         const endRad = Math.atan2(control.y - center.y, control.x - center.x);
 
-        const end = {x: r * Math.cos(endRad) + center.x, y: r * Math.sin(endRad) + center.y};
-
         if (Math.abs(rot) < 0.001) {
             return makeCircle(griddedUnmap(center), griddedUnmap(start), html);
         }
@@ -194,12 +192,25 @@ export function editor() {
     }
 
     const segments = Behaviors.collect([], Events.or(interactionBuffer, Events.change(charData), dragRequest), (segs, change) => {
-        if (change.dragRequest === true) {
+        if (change.dragRequest) {
             console.log("dragRequest", change);
-            const newSegs = [...segs];
-            console.log("setting", newSegs[change.maybeSelect.index] === change.maybeSelect.segment);
-            newSegs[change.maybeSelect.index].center = change.gridded;
-            return newSegs;
+            if (change.dragRequest === "center") {
+                const newSegs = [...segs];
+                newSegs[change.maybeSelect.index].center = change.gridded;
+                return newSegs;
+            }
+            if (change.dragRequest === "start") {
+                const newSegs = [...segs];
+                newSegs[change.maybeSelect.index].radius = change.radius;
+                newSegs[change.maybeSelect.index].start = change.start;
+                return newSegs;
+            }
+            if (change.dragRequest === "end") {
+                const newSegs = [...segs];
+                newSegs[change.maybeSelect.index].radius = change.radius;
+                newSegs[change.maybeSelect.index].end = change.end;
+                return newSegs;
+            }
         }
         if (change.selected !== undefined) {
             // charData changed
@@ -269,7 +280,28 @@ export function editor() {
 
         if (maybeSelect.type === "center") {
             console.log(maybeSelect);
-            Events.send(dragRequest, {dragRequest: true, maybeSelect, gridded});
+            Events.send(dragRequest, {dragRequest: "center", maybeSelect, gridded});
+            return;
+        }
+        if (maybeSelect.type === "start") {
+            // console.log(maybeSelect);
+            const {center} = maybeSelect.segment;
+
+            const newRadius = distance(center, gridded);
+            const newStart = Math.atan2(gridded.y - center.y, gridded.x - center.x);
+
+            Events.send(dragRequest, {dragRequest: "start", maybeSelect, radius: newRadius, start: newStart});
+            return;
+        }
+        if (maybeSelect.type === "end") {
+            // console.log(maybeSelect);
+            const {center} = maybeSelect.segment;
+
+            const newRadius = distance(center, gridded);
+            const newEnd = Math.atan2(gridded.y - center.y, gridded.x - center.x);
+
+            Events.send(dragRequest, {dragRequest: "start", maybeSelect, radius: newRadius, end: newEnd});
+            return;
         }
     })(editorMove);
 
@@ -527,4 +559,4 @@ export function editor() {
     return []
 }
 
-/* globals console Events Behaviors document */
+/* globals console Events Behaviors document gridSpec $segments */
