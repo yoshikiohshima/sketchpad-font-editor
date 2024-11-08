@@ -1,0 +1,8 @@
+{
+  "name": "sketchpad24-font-editor",
+  "version": "0.0.1",
+  "description": "Font Editor for Sketchpad24",
+  "devDependencies": {
+    "eslint": "^9.11.1"
+  }
+}

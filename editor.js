@@ -1,5 +1,7 @@
 export function editor() {
-    const preactModule = import('./preact.standalone.module.js');
+    const preactModule = import("./preact.standalone.module.js");
+    const {stringify, parse} = import ("./stable-stringify.js");
+
     const html = preactModule.html;
     const render = preactModule.render;
 
@@ -10,7 +12,11 @@ export function editor() {
 
     const charClick = Events.listener(document.querySelector("#chars"), "click", evt => evt);
 
+    const saveButton = Events.listener(document.querySelector("#saveButton"), "click", evt => evt);
+    const loadButton = Events.listener(document.querySelector("#loadButton"), "click", evt => evt);
+
     const dragRequest = Events.receiver();
+    const fileLoadRequest = Events.receiver();
 
     const exampleStringInput = Events.listener(document.querySelector("#exampleEditor"), "input", evt => evt);
 
@@ -42,7 +48,10 @@ export function editor() {
 
     console.log(charSelected);
 
-    const charData = Behaviors.collect({selected: " ", segs: [], data: new Map()}, Events.or(charSelected, Events.change($segments)), (current, change) => {
+    const charData = Behaviors.collect({selected: " ", segs: [], data: new Map()}, Events.or(charSelected, Events.change($segments), fileLoadRequest), (current, change) => {
+        if (change.type === "fileLoad") {
+            return {selected: current.selected, segs: change.data.data.get(current.selected) || [], data: change.data.data}
+        }
         if (typeof change === "string") {
             // selected char changed
             if (current.selected === change) {return current;}
@@ -120,9 +129,8 @@ export function editor() {
     const hit = (seg, p) => {
         if (seg.command === "line") {
             const threshold = 0.1;
-            const ps = seg.state;
-            const p1 = ps[0];
-            const p2 = ps[1];
+            const p1 = seg.start;
+            const p2 = seg.end;
             return distance(p1, p) < threshold || distance(p2, p) < threshold;
         } else if (seg.command === "arc") {
             const threshold = 0.1;
@@ -146,12 +154,18 @@ export function editor() {
         return winding ? Math.PI * 2 - diff : diff;
     }
 
+    const lineData = (seg) => {
+        const ps = seg.state;
+        const start = ps[0];
+        const end = ps[1];
+        return {command: "line", start: {x: start.x, y: start.y}, end: {x: end.x, y: end.y}};
+    }
+
     const arcData = (seg) => {
         const ps = seg.state;
         const center = ps[0];
         const start = ps[1];
         const control = ps[2];
-        const shiftKey = seg.shiftKey;
 
         const r = distance(center, start);
 
@@ -161,7 +175,7 @@ export function editor() {
         if (Math.abs(startRad - endRad) < 0.001) {
             endRad = startRad + Math.PI * 2;
         }
-        return {command: "arc", center, radius: r, start: startRad, end: endRad, shiftKey};
+        return {command: "arc", center: {x: center.x, y: center.y}, radius: r, start: startRad, end: endRad};
     }
 
     const segments = Behaviors.collect([], Events.or(interactionBuffer, Events.change(charData), dragRequest), (segs, change) => {
@@ -188,12 +202,12 @@ export function editor() {
             if (change.segment.command === "line") {
                 if (change.dragRequest === "start") {
                     const newSegs = [...segs];
-                    newSegs[change.index].state = [change.start, change.segment.state[1]];
+                    newSegs[change.index].start = {x: change.start.x, y: change.start.y};
                     return newSegs;
                 }
                 if (change.dragRequest === "end") {
                     const newSegs = [...segs];
-                    newSegs[change.index].state = [change.segment.state[0], change.end];
+                    newSegs[change.index].end = {x: change.end.x, y: change.end.y}
                     return newSegs;
                 }
             }
@@ -217,6 +231,10 @@ export function editor() {
                 }
             }
             return segs;
+        }
+
+        if (buffer.command === "line") {
+            return [...segs, lineData(buffer)];
         }
 
         if (buffer.command === "select") {
@@ -251,7 +269,7 @@ export function editor() {
                     }
                 }
                 if (segment.command === "line") {
-                    const [start, end] = segment.state;
+                    const {start, end} = segment;
                     const threshold = 0.1;
                     if (distance(start, p) < threshold) {
                         return {index: i, segment, type: "start", point: p}
@@ -325,9 +343,8 @@ export function editor() {
     const lines = (segs) => {
         return segs.map((seg) => {
             if (seg.command === "line") {
-                const ps = seg.state;
-                const p1 = griddedUnmap(ps[0]);
-                const p2 = griddedUnmap(ps[1]);
+                const p1 = griddedUnmap(seg.start);
+                const p2 = griddedUnmap(seg.end);
                 return makeLine(p1, p2, html);
             } if (seg.command === "arc") {
                 const {center, radius, start, end, shiftKey} = seg;
@@ -462,7 +479,38 @@ export function editor() {
     }
 
     makeGridCanvas({...gridSpec, canvas: document.querySelector("#gridCanvas")});
+
+    const saver = ((charData) => {
+        const data = stringify({version: 1, data: charData.data});
+        const div = document.createElement("a");
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(data);
+        div.setAttribute("href", dataStr);
+        div.setAttribute("download", `sketchpad-font.json`);
+        div.click();
+    })(charData, saveButton);
+
+    const loader = (() => {
+        const input = document.createElement("div");
+        input.innerHTML = `<input id="imageinput" type="file" accept="application/json">`;
+        const imageInput = input.firstChild;
+
+        imageInput.onchange = () => {
+            const file = imageInput.files[0];
+            if (!file) {return;}
+            new Promise(resolve => {
+                let reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.readAsArrayBuffer(file);
+            }).then((data) => {
+                const result = new TextDecoder("utf-8").decode(data);
+                Events.send(fileLoadRequest, {type: "fileLoad", data: parse(result)});
+            })
+            imageInput.value = "";
+        };
+        document.body.appendChild(imageInput);
+        imageInput.click();
+    })(loadButton);
     return []
 }
 
-/* globals console Events Behaviors document gridSpec $segments */
+/* globals console Events Behaviors document gridSpec $segments FileReader TextDecoder */
