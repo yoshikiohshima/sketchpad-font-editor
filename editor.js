@@ -103,9 +103,10 @@ export function editor() {
         }
         const shiftKey = evt.shiftKey;
         const p = griddedMap(evt);
+        const coord = toCharCoordinates(evt);
         const newPoints = [...points.points, p];
         if (points.command === "select") {
-            return {command: "select", points: [], state: p};
+            return {command: "select", points: [], state: coord};
         }
         if (points.command === "line") {
             if (points.points.length === 0) {
