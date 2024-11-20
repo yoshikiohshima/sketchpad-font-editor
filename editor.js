@@ -81,12 +81,12 @@ export function editor() {
         return {x, y, target: evt.target};
     };
 
-    const griddedUnmap = (p, useRect) => {
+    const griddedUnmap = (p, dom) => {
         const gridX = gridSpec.width / gridSpec.x;
         const gridY = gridSpec.height / gridSpec.y;
         let offset;
-        if (useRect) {
-            const rect = p.target.getBoundingClientRect();
+        if (dom) {
+            const rect = dom.getBoundingClientRect();
             offset = {x: rect.x, y: rect.y};
         } else {
             offset = {x: 0, y: 0};
@@ -128,14 +128,19 @@ export function editor() {
 
     const hit = (seg, p) => {
         if (seg.command === "line") {
-            const threshold = 0.1;
+            const threshold = 0.25;
             const p1 = seg.start;
             const p2 = seg.end;
             return distance(p1, p) < threshold || distance(p2, p) < threshold;
         } else if (seg.command === "arc") {
-            const threshold = 0.1;
-            const center = seg.center;
-            return distance(center, p) < threshold;
+            const threshold = 0.25;
+            const {center, start, end, radius} = seg;
+            const s = {x: Math.cos(start) * radius + center.x, y: Math.sin(start) * radius + center.y};
+            const e = {x: Math.cos(end) * radius + center.x, y: Math.sin(end) * radius + center.y};
+
+            if (distance(center, p) < threshold) {return true}
+            if (distance(s, p) < threshold) {return true}
+            if (distance(e, p) < threshold) {return true}
         }
         return false;
     };
@@ -254,7 +259,7 @@ export function editor() {
                 const segment = segments[i];
                 if (segment.command === "arc") {
                     const {start, end, radius, center} = segment;
-                    const threshold = 0.1;
+                    const threshold = 0.25;
                     const s = {x: Math.cos(start) * radius + center.x, y: Math.sin(start) * radius + center.y};
                     const e = {x: Math.cos(end) * radius + center.x, y: Math.sin(end) * radius + center.y};
 
@@ -270,7 +275,7 @@ export function editor() {
                 }
                 if (segment.command === "line") {
                     const {start, end} = segment;
-                    const threshold = 0.1;
+                    const threshold = 0.25;
                     if (distance(start, p) < threshold) {
                         return {index: i, segment, type: "start", point: p}
                     }
@@ -296,19 +301,22 @@ export function editor() {
                 return;
             }
             if (maybeSelect.type === "start") {
-                // console.log(maybeSelect);
-                const {center} = maybeSelect.segment;
-                const newRadius = distance(center, gridded);
-                const newStart = Math.atan2(gridded.y - center.y, gridded.x - center.x);
+                // console.log("start", maybeSelect);
+                const {center, radius} = maybeSelect.segment;
+                const coord = toCharCoordinates(evt)
+
+                const newRadius = radius;
+                const newStart = Math.atan2(coord.y - center.y, coord.x - center.x);
                 Events.send(dragRequest, {dragRequest: "start", ...maybeSelect, radius: newRadius, start: newStart});
                 return;
             }
             if (maybeSelect.type === "end") {
-                // console.log(maybeSelect);
-                const {center} = maybeSelect.segment;
-                const newRadius = distance(center, gridded);
-                const newEnd = Math.atan2(gridded.y - center.y, gridded.x - center.x);
-                Events.send(dragRequest, {dragRequest: "start", ...maybeSelect, radius: newRadius, end: newEnd});
+                // console.log("end", maybeSelect);
+                const {center, radius} = maybeSelect.segment;
+                const coord = toCharCoordinates(evt)
+                const newRadius = radius;
+                const newEnd = Math.atan2(coord.y - center.y, coord.x - center.x);
+                Events.send(dragRequest, {dragRequest: "end", ...maybeSelect, radius: newRadius, end: newEnd});
                 return;
             }
         }
@@ -372,7 +380,7 @@ export function editor() {
 
     const gridMover = ((editorMove, toolState) => {
         const gridded = toolState === "delete" ? toCharCoordinates(editorMove) : griddedMap(editorMove);
-        const p = griddedUnmap(gridded, true);
+        const p = griddedUnmap(gridded, document.querySelector("#editorPane"));
         const gridCursor = document.querySelector("#gridCursor");
         gridCursor.style.left = `${p.x - 5}px`;
         gridCursor.style.top = `${p.y - 5}px`;
@@ -409,6 +417,60 @@ export function editor() {
         }
         return makeLine({x: -1, y: -1}, {x: -1, y: -1}, html);
     })(Behaviors.keep(interactionBuffer), editorMove, html);
+
+    const highlightControls = ((editorMove, toolState, segments) => {
+        const highlight1 = document.querySelector("#highlight1");
+        highlight1.style.display = "none";
+        const highlight2 = document.querySelector("#highlight2");
+        highlight2.style.display = "none";
+        const highlight3 = document.querySelector("#highlight3");
+        highlight3.style.display = "none";
+        if (toolState !== "select" && toolState !== "delete") {return;}
+        const p = toCharCoordinates(editorMove);
+
+        const editorPane = document.querySelector("#editorPane");
+
+        for (let index = segments.length - 1; index >= 0; index--) {
+            const seg = segments[index];
+            if (hit(seg, p)) {
+                if (seg.command === "arc") {
+                    const {start, end, radius, center} = seg;
+                    const s = {x: Math.cos(start) * radius + center.x, y: Math.sin(start) * radius + center.y};
+                    const e = {x: Math.cos(end) * radius + center.x, y: Math.sin(end) * radius + center.y};
+
+                    let p = griddedUnmap(center,  editorPane);
+
+                    highlight1.style.display = "inherit";
+                    highlight1.style.left = `${p.x - 5}px`;
+                    highlight1.style.top = `${p.y - 5}px`;
+
+                    p = griddedUnmap(s,  editorPane);
+                    highlight2.style.display = "inherit";
+                    highlight2.style.left = `${p.x - 5}px`;
+                    highlight2.style.top = `${p.y - 5}px`;
+
+                    p = griddedUnmap(e,  editorPane);
+                    highlight3.style.display = "inherit";
+                    highlight3.style.left = `${p.x - 5}px`;
+                    highlight3.style.top = `${p.y - 5}px`;
+                    return;
+                } else if (seg.command === "line") {
+                    const {start, end} = seg;
+                    let p = griddedUnmap(start, editorPane);
+                    highlight1.style.display = "inherit";
+                    highlight1.style.left = `${p.x - 5}px`;
+                    highlight1.style.top = `${p.y - 5}px`;
+
+                    p = griddedUnmap(end, editorPane);
+                    highlight2.style.display = "inherit";
+                    highlight2.style.left = `${p.x - 5}px`;
+                    highlight2.style.top = `${p.y - 5}px`;
+                }
+                return;
+            }
+        }
+        return;
+    })(editorMove, toolState, segments);
 
     const rubberBandLine = Behaviors.collect(
         makeLine({x: 0, y: 0}, {x: 0, y: 0}, html),

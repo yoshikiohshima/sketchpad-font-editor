@@ -29,7 +29,10 @@
               <div class="zeroHeight">
                   <div id="editorPane2"></div>
               </div>
-            <div id="gridCursor"></div>
+            <div id="gridCursor" class="highlight"></div>
+            <div id="highlight1" class="highlight toDelete"></div>
+            <div id="highlight2" class="highlight toDelete"></div>
+            <div id="highlight3" class="highlight toDelete"></div>
           </div>
           <div id="fileButtons">
               <button id="saveButton">Save</button>
@@ -181,7 +184,7 @@
             justify-content: flex-start;
         }
 
-        #gridCursor {
+        .highlight {
             width: 10px;
             height: 10px;
             background-color: #bbb;
@@ -190,6 +193,10 @@
             transition: top 0.2s;
             transition: left 0.2s;
         }
+        .toDelete {
+            background-color: #b66;
+        }
+
       </style>
    </div>
    <script type="module">
