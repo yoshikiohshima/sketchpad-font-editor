@@ -14,10 +14,11 @@
       <div id="all">
         <div id="charEditor">
           <div id="tools">
-            <div id="select" class="toolButton">Select</div>
-            <div id="line" class="toolButton">Line</div>
-            <div id="arc" class="toolButton">Arc</div>
-            <div id="delete" class="toolButton">Delete</div>
+            <div id="select" class="toolButton no-select">Select</div>
+            <div id="line" class="toolButton no-select">Line</div>
+            <div id="arc" class="toolButton no-select">Arc</div>
+            <div id="delete" class="toolButton no-select">Delete</div>
+            <div id="undo" class="toolButton no-select">Undo</div>
           </div>
           <div id="editorPaneHolder">
               <div class="zeroHeight">
@@ -99,6 +100,12 @@
             background-color: #ccc;
             border: 2px ridge rgba(120, 120, 120, .6);
             border-radius: 4px;
+        }
+
+        .no-select {
+            user-select: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
         }
 
         #editorPaneHolder {

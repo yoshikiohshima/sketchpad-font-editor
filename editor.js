@@ -9,6 +9,7 @@ export function editor() {
     const lineButton = Events.listener(document.querySelector("#line"), "click", evt => evt);
     const arcButton = Events.listener(document.querySelector("#arc"), "click", evt => evt);
     const deleteButton = Events.listener(document.querySelector("#delete"), "click", evt => evt);
+    const undoButton = Events.listener(document.querySelector("#undo"), "click", evt => evt);
 
     const charClick = Events.listener(document.querySelector("#chars"), "click", evt => evt);
 
@@ -17,6 +18,9 @@ export function editor() {
 
     const dragRequest = Events.receiver();
     const fileLoadRequest = Events.receiver();
+    const undoRequest = Events.receiver();
+
+    console.log(undoRequest);
 
     const exampleStringInput = Events.listener(document.querySelector("#exampleEditor"), "input", evt => evt);
 
@@ -184,39 +188,36 @@ export function editor() {
         return {command: "arc", center: {x: center.x, y: center.y}, radius: r, start: startRad, end: endRad};
     }
 
-    const segments = Behaviors.collect([], Events.or(interactionBuffer, Events.change(charData), dragRequest), (segs, change) => {
+    const segments = Behaviors.collect([], Events.or(interactionBuffer, Events.change(charData), dragRequest, undoRequest), (segs, change) => {
+        if (change.type === "undo") {
+            return [...change.obj];
+        }
         if (change.dragRequest) {
+            const newSegs = [...segs];
+            const newEntry = {...newSegs[change.index]};
             if (change.segment.command === "arc") {
                 if (change.dragRequest === "center") {
-                    const newSegs = [...segs];
-                    newSegs[change.index].center = change.gridded;
-                    return newSegs;
+                    newEntry.center = change.gridded;
                 }
                 if (change.dragRequest === "start") {
-                    const newSegs = [...segs];
-                    newSegs[change.index].radius = change.radius;
-                    newSegs[change.index].start = change.start;
-                    return newSegs;
+                    newEntry.radius = change.radius;
+                    newEntry.start = change.start;
                 }
                 if (change.dragRequest === "end") {
-                    const newSegs = [...segs];
-                    newSegs[change.index].radius = change.radius;
-                    newSegs[change.index].end = change.end;
-                    return newSegs;
+                    newEntry.radius = change.radius;
+                    newEntry.end = change.end;
                 }
             }
             if (change.segment.command === "line") {
                 if (change.dragRequest === "start") {
-                    const newSegs = [...segs];
-                    newSegs[change.index].start = {x: change.start.x, y: change.start.y};
-                    return newSegs;
+                    newEntry.start = {x: change.start.x, y: change.start.y};
                 }
                 if (change.dragRequest === "end") {
-                    const newSegs = [...segs];
-                    newSegs[change.index].end = {x: change.end.x, y: change.end.y}
-                    return newSegs;
+                    newEntry.end = {x: change.end.x, y: change.end.y};
                 }
             }
+            newSegs[change.index] = newEntry;
+            return newSegs;
         }
         if (change.selected !== undefined) {
             // charData changed
@@ -252,6 +253,19 @@ export function editor() {
         }
         return [...segs, buffer];
     });
+
+    const undoState = Behaviors.collect([], Events.or(undoRequest, Events.change(segments)), (old, segsOrUndo) => {
+        if (segsOrUndo.type === "undo") {
+            return old.slice(0, old.length - 1);
+        }
+        return [...old, segsOrUndo];
+    });
+
+    const _undoObj = ((_ev) => {
+        if (undoState.length === 0) {return;}
+        if (undoState.length === 1) {return;}
+        Events.send(undoRequest, {type: "undo", obj: undoState[undoState.length - 2]});
+    })(undoButton);
 
     const maybeSelect = Behaviors.collect(null, Events.or(interactionBuffer, editorUp), (_old, buffer) => {
         if (toolState === "select" && buffer.state) {
@@ -291,7 +305,7 @@ export function editor() {
 
     console.log(maybeSelect);
 
-    const dragObject = ((evt) => {
+    const _dragObject = ((evt) => {
         const gridded = griddedMap(evt);
         if (!maybeSelect) {return;}
 
@@ -379,7 +393,7 @@ export function editor() {
     const editorMove = Events.listener("#editorPane", "pointermove", (evt) => evt);
     const editorUp = Events.listener("#editorPane", "pointerup", (evt) => evt);
 
-    const gridMover = ((editorMove, toolState) => {
+    const _gridMover = ((editorMove, toolState) => {
         const gridded = toolState === "delete" ? toCharCoordinates(editorMove) : griddedMap(editorMove);
         const p = griddedUnmap(gridded, document.querySelector("#editorPane"));
         const gridCursor = document.querySelector("#gridCursor");
@@ -419,7 +433,7 @@ export function editor() {
         return makeLine({x: -1, y: -1}, {x: -1, y: -1}, html);
     })(Behaviors.keep(interactionBuffer), editorMove, html);
 
-    const highlightControls = ((editorMove, toolState, segments) => {
+    const _highlightControls = ((editorMove, toolState, segments) => {
         const highlight1 = document.querySelector("#highlight1");
         highlight1.style.display = "none";
         const highlight2 = document.querySelector("#highlight2");
@@ -543,7 +557,7 @@ export function editor() {
 
     makeGridCanvas({...gridSpec, canvas: document.querySelector("#gridCanvas")});
 
-    const saver = ((charData) => {
+    const _saver = ((charData) => {
         const data = stringify({version: 1, data: charData.data});
         const div = document.createElement("a");
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(data);
@@ -552,7 +566,7 @@ export function editor() {
         div.click();
     })(charData, saveButton);
 
-    const loader = (() => {
+    const _loader = (() => {
         const input = document.createElement("div");
         input.innerHTML = `<input id="imageinput" type="file" accept="application/json">`;
         const imageInput = input.firstChild;
