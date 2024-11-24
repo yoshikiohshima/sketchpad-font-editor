@@ -67,13 +67,15 @@ export function editor() {
         return {selected: current.selected, segs: change, data: current.data};
     });
 
-    const griddedMap = (evt) => {
+    const griddedMap = (evt, half) => {
+        const f = half ? 2 : 1;
         const rect = evt.target.getBoundingClientRect();
-        const gridX = gridSpec.width / gridSpec.x;
-        const gridY = gridSpec.height / gridSpec.y;
+        const gridX = gridSpec.width / (gridSpec.x * f);
+        const gridY = gridSpec.height / (gridSpec.y * f);
         const x = Math.max(0, Math.round((evt.clientX - rect.x - (gridX / 2)) / gridX));
-        const y = gridSpec.y - 1 - Math.round((evt.clientY - rect.y - (gridY / 2)) / gridY);
-        return {x, y, target: evt.target};
+        const y = (gridSpec.y * f) - 1 - Math.round((evt.clientY - rect.y - (gridY / 2)) / gridY);
+
+        return {x: x / f, y: y / f, target: evt.target};
     };
 
     const toCharCoordinates = (evt) => {
@@ -173,9 +175,15 @@ export function editor() {
 
     const arcData = (seg) => {
         const ps = seg.state;
+        /*
         const center = ps[0];
         const start = ps[1];
         const control = ps[2];
+        */
+
+        const start = ps[0];
+        const control = ps[2];
+        const center = {x: (start.x + ps[1].x) / 2, y: (start.y + ps[1].y) / 2};
 
         const r = distance(center, start);
 
@@ -312,7 +320,8 @@ export function editor() {
         if (maybeSelect.segment.command === "arc") {
             if (maybeSelect.type === "center") {
                 // console.log(maybeSelect);
-                Events.send(dragRequest, {dragRequest: "center", ...maybeSelect, gridded});
+                const halfGridded = griddedMap(evt, true);
+                Events.send(dragRequest, {dragRequest: "center", ...maybeSelect, gridded: halfGridded});
                 return;
             }
             if (maybeSelect.type === "start") {
@@ -415,9 +424,16 @@ export function editor() {
                 const p2 = griddedUnmap(griddedMap(editorMove));
                 return makeLine(p1, p2, html);
             } else if (points.length === 2) {
+
+                const start = points[0];
+                const center = {x: (start.x + points[1].x) / 2, y: (start.y + points[1].y) / 2};
+                const control = griddedMap(editorMove);
+
+                /*
                 const center = points[0];
                 const start = points[1];
                 const control = griddedMap(editorMove);
+                */
                 const shiftKey = editorMove.shiftKey;
 
                 const r = distance(center, start);
