@@ -52,20 +52,26 @@ export function editor() {
 
     console.log(charSelected);
 
-    const charData = Behaviors.collect({selected: " ", segs: [], data: new Map()}, Events.or(charSelected, Events.change($segments), fileLoadRequest), (current, change) => {
-        if (change.type === "fileLoad") {
-            return {selected: current.selected, segs: change.data.data.get(current.selected) || [], data: change.data.data}
-        }
-        if (typeof change === "string") {
+    const charData = Behaviors.select(
+        {selected: " ", segs: [], data: new Map()},
+        fileLoadRequest, (current, change) => {
+            return {
+                selected: current.selected,
+                segs: change.data.data.get(current.selected) || [],
+                data: change.data.data
+            };
+        },
+        charSelected, (current, change) => {
             // selected char changed
             if (current.selected === change) {return current;}
             current.data.set(current.selected, current.segs);
             return {selected: change, segs: current.segs, data: current.data}
+        },
+        Events.change($segments), (current, change) => {
+            current.data.set(current.selected, change);
+            return {selected: current.selected, segs: change, data: current.data};
         }
-        // segments updated
-        current.data.set(current.selected, change);
-        return {selected: current.selected, segs: change, data: current.data};
-    });
+    );
 
     const griddedMap = (evt, half) => {
         const f = half ? 2 : 1;
@@ -103,35 +109,38 @@ export function editor() {
         }
     };
 
-    const interactionBuffer = Events.collect({command: "line", points: [], state: null}, Events.or(editorDown, Events.change(toolState)), (points, evt) => {
-        if (typeof evt === "string") {
-            return {command: evt, points: [], state: null};
+    const interactionBuffer = Events.select(
+        {command: "line", points: [], state: null},
+        Events.change(toolState), (_points, command) => {
+            return {command, points: [], state: null};
+        },
+        editorDown, (points, evt) => {
+            const shiftKey = evt.shiftKey;
+            const p = griddedMap(evt);
+            const coord = toCharCoordinates(evt);
+            const newPoints = [...points.points, p];
+            if (points.command === "select") {
+                return {command: "select", points: [], state: coord};
+            }
+            if (points.command === "line") {
+                if (points.points.length === 0) {
+                    return {command: "line", points: newPoints, state: null};
+                }
+                if (points.points.length === 1) {
+                    return {command: "line", points: [], state: newPoints, shiftKey};
+                }
+            } else if (points.command === "arc") {
+                if (points.points.length === 0 || points.points.length === 1) {
+                    return {command: "arc", points: newPoints, state: null};
+                }
+                if (points.points.length === 2) {
+                    return {command: "arc", points: [], state: newPoints, shiftKey};
+                }
+            } else if (points.command === "delete") {
+                return {command: "delete", points: [], state: [toCharCoordinates(evt)], shiftKey};
+            }
         }
-        const shiftKey = evt.shiftKey;
-        const p = griddedMap(evt);
-        const coord = toCharCoordinates(evt);
-        const newPoints = [...points.points, p];
-        if (points.command === "select") {
-            return {command: "select", points: [], state: coord};
-        }
-        if (points.command === "line") {
-            if (points.points.length === 0) {
-                return {command: "line", points: newPoints, state: null};
-            }
-            if (points.points.length === 1) {
-                return {command: "line", points: [], state: newPoints, shiftKey};
-            }
-        } else if (points.command === "arc") {
-            if (points.points.length === 0 || points.points.length === 1) {
-                return {command: "arc", points: newPoints, state: null};
-            }
-            if (points.points.length === 2) {
-                return {command: "arc", points: [], state: newPoints, shiftKey};
-            }
-        } else if (points.command === "delete") {
-            return {command: "delete", points: [], state: [toCharCoordinates(evt)], shiftKey};
-        }
-    });
+    );
 
     const hit = (seg, p) => {
         if (seg.command === "line") {
@@ -196,6 +205,76 @@ export function editor() {
         return {command: "arc", center: {x: center.x, y: center.y}, radius: r, start: startRad, end: endRad};
     }
 
+    const segments = Behaviors.select(
+        [],
+        interactionBuffer, (segs, change) => {
+            const buffer = change;
+            if (!buffer.state) {return segs;}
+            if (buffer.command === "delete") {
+                const p = buffer.state[0];
+                for (let index = segs.length - 1; index >= 0; index--) {
+                    const seg = segs[index];
+                    if (hit(seg, p)) {
+                        const result = [...segs];
+                        result.splice(index, 1);
+                        return result;
+                    }
+                }
+                return segs;
+            }
+
+            if (buffer.command === "line") {
+                return [...segs, lineData(buffer)];
+            }
+
+            if (buffer.command === "select") {
+                return segs;
+            }
+
+            if (buffer.command === "arc") {
+                return [...segs, arcData(buffer)];
+            }
+            return [...segs, buffer];
+        },
+        Events.change(charData), (segs, change) => {
+            // charData changed
+            const maybe = change.data.get(change.selected);
+            if (!maybe) {return [];}
+            return maybe;
+        },
+        dragRequest, (segs, change) => {
+            const newSegs = [...segs];
+            const newEntry = {...newSegs[change.index]};
+            if (change.segment.command === "arc") {
+                if (change.dragRequest === "center") {
+                    newEntry.center = change.gridded;
+                }
+                if (change.dragRequest === "start") {
+                    newEntry.radius = change.radius;
+                    newEntry.start = change.start;
+                }
+                if (change.dragRequest === "end") {
+                    newEntry.radius = change.radius;
+                    newEntry.end = change.end;
+                }
+            }
+            if (change.segment.command === "line") {
+                if (change.dragRequest === "start") {
+                    newEntry.start = {x: change.start.x, y: change.start.y};
+                }
+                if (change.dragRequest === "end") {
+                    newEntry.end = {x: change.end.x, y: change.end.y};
+                }
+            }
+            newSegs[change.index] = newEntry;
+            return newSegs;
+        },
+        undoRequest, (segs, change) => {
+            return [...change.obj];
+        }
+    );
+
+    /*
     const segments = Behaviors.collect([], Events.or(interactionBuffer, Events.change(charData), dragRequest, undoRequest), (segs, change) => {
         if (change.type === "undo") {
             return [...change.obj];
@@ -260,7 +339,8 @@ export function editor() {
             return [...segs, arcData(buffer)];
         }
         return [...segs, buffer];
-    });
+        });
+        */
 
     const undoState = Behaviors.collect([], Events.or(undoRequest, Events.change(segments)), (old, segsOrUndo) => {
         if (segsOrUndo.type === "undo") {
